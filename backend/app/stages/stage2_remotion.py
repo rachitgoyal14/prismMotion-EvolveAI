@@ -54,14 +54,14 @@ def generate_remotion_tsx(scenes_with_media: dict, script_per_scene: list[dict])
 
 def run_stage2(scenes_data: dict, script: list[dict]) -> str:
     """
-    Enrich scenes with Pexels media, generate TSX, write to remotion/src/PharmaVideo.tsx.
-    Returns path to the written TSX file.
+    Enrich scenes with Pexels media and persist JSON outputs for downstream stages.
+
+    Note: We intentionally do NOT overwrite `remotion/src/PharmaVideo.tsx` here.
+    Using an LLM-generated TSX proved brittle (black frames, props mismatches, missing audio).
+    Keep the Remotion composition stable and drive it via props + JSON instead.
     """
     enriched = enrich_scenes_with_media(scenes_data)
-    tsx_code = generate_remotion_tsx(enriched, script)
     out_path = REMOTION_DIR / "src" / "PharmaVideo.tsx"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(tsx_code, encoding="utf-8")
     # Also persist enriched scenes + script for render stage
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
     (OUTPUTS_DIR / "scenes_with_media.json").write_text(
