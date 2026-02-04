@@ -1,0 +1,23 @@
+{
+  "name": "pharma-video-remotion",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "remotion bundle",
+    "start": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.0",
+    "@remotion/cli": "4.0.0",
+    "@remotion/renderer": "4.0.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "remotion": "4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "18.2.0",
+    "@types/react-dom": "18.2.0",
+    "typescript": "^5.3.0"
+  }
+}

@@ -1,0 +1,12 @@
+.venv/
+venv/
+.env
+__pycache__/
+*.pyc
+node_modules/
+remotion/out/
+remotion/.remotion/
+backend/app/outputs/
+*.mp4
+*.wav
+*.log
