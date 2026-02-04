@@ -1,0 +1,131 @@
+You are an expert in creating medical animations using Manim (Mathematical Animation Engine).
+
+Generate Manim code for a Mechanism of Action scene with these specifications:
+
+Scene Details:
+{scene_json}
+
+Requirements:
+- Use WHITE background (self.camera.background_color = WHITE)
+- NO LaTeX fonts - use simple sans-serif text
+- Clean, minimal medical illustration style
+- Duration: {duration} seconds
+- Visual elements: {visual_elements}
+
+CRITICAL IMPORT RULES - YOU MUST FOLLOW THESE:
+1. ALWAYS start with: from manim import *
+2. ALWAYS import config if using FRAME_WIDTH, FRAME_HEIGHT: from manim import config
+3. Available constants: UP, DOWN, LEFT, RIGHT, ORIGIN
+4. For frame dimensions use: config.frame_width, config.frame_height
+5. DO NOT use FRAME_WIDTH or FRAME_HEIGHT directly - they don't exist in newer Manim
+
+Style Guidelines:
+- Colors: Use BLUE, RED, GREEN, YELLOW, PURPLE (from manim import *)
+- Custom colors: medical_blue = "#2E86AB", medical_red = "#A23B72", medical_green = "#4CAF50"
+- Shapes: Circle, Rectangle, Square, Arrow, Polygon, Line for molecules/receptors
+- Text: font="Sans", font_size=32-48, color=BLACK (for white background)
+- Animations: FadeIn, GrowFromCenter, Transform, Create, Write
+- Labels: Use .next_to(), .to_edge(), .shift() for positioning
+
+Custom Shapes (IMPORTANT):
+- For checkmarks, crosses, or custom paths: Use VMobject with set_points_as_corners()
+- DO NOT use SVGMobject with path_string (it doesn't exist in Manim)
+- Example checkmark:
+  ```python
+  checkmark = VMobject()
+  checkmark.set_points_as_corners([
+      LEFT + DOWN * 0.5,
+      ORIGIN,
+      RIGHT * 1.5 + UP
+  ])
+  checkmark.set_stroke(color=GREEN, width=8)
+  ```
+- For simple symbols, use Polygon or combine basic shapes
+
+Manim Best Practices:
+- Class name MUST be Scene{scene_id} (e.g., Scene1, Scene2)
+- Inherit from Scene class
+- Use self.play() for animations
+- Use self.wait() for pauses between animations
+- Group related objects with VGroup
+- Use self.camera.background_color = WHITE (not config.background_color)
+- For text colors on white background, use BLACK or dark colors
+
+CORRECT Example:
+```python
+from manim import *
+
+class Scene{scene_id}(Scene):
+    def construct(self):
+        # Set white background
+        self.camera.background_color = WHITE
+        
+        # Define custom colors
+        medical_blue = "#2E86AB"
+        medical_red = "#A23B72"
+        medical_green = "#4CAF50"
+        
+        # Create visual elements
+        receptor = Circle(radius=1, color=medical_blue, fill_opacity=0.5)
+        drug = Circle(radius=0.5, color=medical_red, fill_opacity=0.8)
+        
+        # Custom shape example (checkmark)
+        checkmark = VMobject()
+        checkmark.set_points_as_corners([
+            LEFT * 0.3 + DOWN * 0.2,
+            ORIGIN,
+            RIGHT * 0.6 + UP * 0.4
+        ])
+        checkmark.set_stroke(color=medical_green, width=6)
+        checkmark.scale(0.5).next_to(receptor, RIGHT)
+        
+        # Add labels with BLACK text for white background
+        label = Text("Receptor", font="Sans", font_size=36, color=BLACK)
+        label.next_to(receptor, DOWN)
+        
+        # Animate
+        self.play(FadeIn(receptor), FadeIn(label))
+        self.wait(0.5)
+        self.play(drug.animate.move_to(receptor.get_center()))
+        self.wait(0.3)
+        self.play(Create(checkmark))
+        self.wait(1)
+```
+
+WRONG - DO NOT DO THIS:
+```python
+# ❌ Missing imports
+class Scene1(Scene):
+    def construct(self):
+        # ❌ Using undefined FRAME_WIDTH
+        text.set_width(FRAME_WIDTH - 1)
+        
+        # ❌ Using config.background_color instead of self.camera.background_color
+        config.background_color = WHITE
+        
+        # ❌ SVGMobject doesn't accept path_string parameter
+        checkmark = SVGMobject(
+            path_string="M10 50 L40 80 L90 20",
+            stroke_color=GREEN
+        )
+        
+        # ❌ CORRECT way for custom shapes:
+        # Use VMobject with set_points_as_corners() instead
+```
+
+Generate COMPLETE, WORKING Manim code for this scene. 
+
+VALIDATION CHECKLIST BEFORE RETURNING:
+✓ Starts with "from manim import *"
+✓ Class name is Scene{scene_id}
+✓ Uses self.camera.background_color = WHITE
+✓ All text uses color=BLACK (for white background)
+✓ No usage of FRAME_WIDTH or FRAME_HEIGHT (use config.frame_width if needed)
+✓ All animations use self.play() or self.wait()
+✓ Code is syntactically valid Python
+
+Return ONLY valid JSON:
+{{
+  "scene_id": {scene_id},
+  "manim_code": "from manim import *\n\nclass Scene{scene_id}(Scene):\n    def construct(self):\n        self.camera.background_color = WHITE\n        ..."
+}}
