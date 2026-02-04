@@ -1,7 +1,8 @@
 """
-Pharma video generation pipeline: scenes → script → Remotion TSX + Pexels → TTS → render.
+Pharma video generation pipeline with logging and timing.
 """
 from pathlib import Path
+import time
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -12,12 +13,26 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 
+# Setup logging FIRST
+from app.utils.logging_config import setup_logging, StageLogger
+import logging
+setup_logging(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 from app.utils.generate_uid import generate_video_id
+
+# Remotion pipeline
 from app.stages.stage1_scenes import generate_scenes
 from app.stages.stage3_script import generate_script
 from app.stages.stage2_remotion import run_stage2
 from app.stages.stage4_tts import tts_generate
 from app.stages.stage5_render import render_remotion
+
+# MoA/Manim pipeline
+from app.stages.stage1_moa_scenes import generate_moa_scenes
+from app.stages.stage2_moa_manim import run_stage2_moa
+from app.stages.stage5_moa_render import render_moa_video
+
 from app.paths import OUTPUTS_DIR, REMOTION_DIR
 
 app = FastAPI(title="Pharma Video Generator")
@@ -34,64 +49,153 @@ VIDEOS_DIR = OUTPUTS_DIR / "videos"
 
 
 class CreateRequest(BaseModel):
-    video_type: str = "product_ad"  # brand_ad | patient_awareness | product_ad
+    """Pexels + Remotion video (product ads, patient awareness)"""
+    video_type: str = "product_ad"
     topic: str
     brand_name: str = ""
     persona: str = "professional narrator"
     tone: str = "clear and reassuring"
 
 
+class CreateMoARequest(BaseModel):
+    """Mechanism of Action video using Manim"""
+    drug_name: str
+    condition: str
+    target_audience: str = "healthcare professionals"
+    persona: str = "professional medical narrator"
+    tone: str = "clear and educational"
+    quality: str = "high"
+
+
 @app.post("/create")
 def create_video(body: CreateRequest):
-    """
-    Run full pipeline: plan scenes → script → Pexels + Remotion TSX → TTS → render.
-    """
+    """Pexels + Remotion pipeline."""
+    pipeline_logger = StageLogger("REMOTION PIPELINE")
+    pipeline_start = time.time()
+    
     video_id = generate_video_id()
-
-    # Stage 1: Scene planning
-    scenes_data = generate_scenes(
-        topic=body.topic,
-        video_type=body.video_type,
-        brand_name=body.brand_name or "Our Brand",
-    )
-    scenes = scenes_data.get("scenes", [])
-
-    if not scenes:
-        raise HTTPException(status_code=500, detail="No scenes generated")
-
-    # Stage 3: Script (before Remotion so TSX can include narration text)
-    script = generate_script(
-        scenes,
-        persona=body.persona,
-        tone=body.tone,
-    )
-
-    # Stage 2: Pexels + LLM-generated Remotion TSX
-    run_stage2(scenes_data, script)
-
-    # Stage 4: TTS
-    scene_ids = [s["scene_id"] for s in scenes]
-    tts_generate(script=script, video_id=video_id, scene_ids=scene_ids)
-
-    # Stage 5: Remotion render
+    logger.info(f"Starting Remotion pipeline - Video ID: {video_id}", extra={'stage': 'PIPELINE START'})
+    
     try:
+        # Stage 1
+        stage_logger = StageLogger("Scene Planning")
+        stage_logger.start()
+        scenes_data = generate_scenes(topic=body.topic, video_type=body.video_type, brand_name=body.brand_name or "Our Brand")
+        scenes = scenes_data.get("scenes", [])
+        stage_logger.complete(f"{len(scenes)} scenes planned")
+        
+        if not scenes:
+            raise HTTPException(status_code=500, detail="No scenes generated")
+        
+        # Stage 3
+        stage_logger = StageLogger("Script Writing")
+        stage_logger.start()
+        script = generate_script(scenes, persona=body.persona, tone=body.tone)
+        stage_logger.complete(f"{len(script)} scripts generated")
+        
+        # Stage 2
+        stage_logger = StageLogger("Remotion + Pexels")
+        stage_logger.start()
+        run_stage2(scenes_data, script, video_id)
+        stage_logger.complete("Media downloaded and TSX generated")
+        
+        # Stage 4
+        scene_ids = [s["scene_id"] for s in scenes]
+        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids)
+        
+        # Stage 5
+        stage_logger = StageLogger("Remotion Render")
+        stage_logger.start()
         final_path = render_remotion(video_id)
+        stage_logger.complete(f"Video rendered: {final_path.name}")
+        
+        total_time = time.time() - pipeline_start
+        logger.info(f"Pipeline completed in {total_time:.1f}s", extra={'stage': 'PIPELINE COMPLETE'})
+        
+        return {
+            "status": "complete",
+            "video_id": video_id,
+            "video_type": body.video_type,
+            "video_path": str(final_path),
+            "elapsed_seconds": round(total_time, 1)
+        }
+        
     except FileNotFoundError as e:
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Render failed: {e}")
+        logger.error(f"Pipeline failed: {e}", extra={'stage': 'PIPELINE ERROR'})
+        raise HTTPException(status_code=500, detail=f"Pipeline failed: {e}")
 
-    return {
-        "status": "complete",
-        "video_id": video_id,
-        "video_path": str(final_path),
-    }
+
+@app.post("/create-moa")
+def create_moa_video(body: CreateMoARequest):
+    """Manim MoA pipeline with detailed logging."""
+    pipeline_start = time.time()
+    video_id = generate_video_id()
+    
+    logger.info(f"Starting MoA pipeline - Video ID: {video_id}", extra={'stage': 'PIPELINE START'})
+    logger.info(f"Drug: {body.drug_name} | Condition: {body.condition} | Quality: {body.quality}", extra={'progress': True})
+    
+    try:
+        # Stage 1: MoA Scene planning
+        stage_logger = StageLogger("MoA Scene Planning")
+        stage_logger.start()
+        scenes_data = generate_moa_scenes(
+            drug_name=body.drug_name,
+            condition=body.condition,
+            target_audience=body.target_audience,
+        )
+        scenes = scenes_data.get("scenes", [])
+        stage_logger.complete(f"{len(scenes)} MoA scenes planned")
+        
+        if not scenes:
+            raise HTTPException(status_code=500, detail="No MoA scenes generated")
+        
+        # Stage 3: Script (reuse existing)
+        stage_logger = StageLogger("Script Writing")
+        stage_logger.start()
+        script = generate_script(scenes, persona=body.persona, tone=body.tone)
+        stage_logger.complete(f"{len(script)} scripts generated")
+        
+        # Stage 2: Generate Manim code (PARALLEL)
+        run_stage2_moa(scenes_data, script, video_id, max_workers=4)
+        
+        # Stage 4: TTS (PARALLEL)
+        scene_ids = [s["scene_id"] for s in scenes]
+        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids, max_workers=5)
+        
+        # Stage 5: Render Manim + combine with audio
+        final_path = render_moa_video(video_id, quality=body.quality)
+        
+        total_time = time.time() - pipeline_start
+        logger.info(f"MoA pipeline completed in {total_time:.1f}s ({total_time//60:.0f}m {total_time%60:.0f}s)", extra={'stage': 'PIPELINE COMPLETE'})
+        
+        return {
+            "status": "complete",
+            "video_id": video_id,
+            "video_type": "mechanism_of_action",
+            "drug_name": body.drug_name,
+            "condition": body.condition,
+            "video_path": str(final_path),
+            "elapsed_seconds": round(total_time, 1),
+            "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s"
+        }
+        
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"MoA pipeline failed: {e}", extra={'stage': 'PIPELINE ERROR'})
+        raise HTTPException(status_code=500, detail=f"MoA render failed: {e}")
 
 
 @app.get("/video/{video_id}")
 async def get_video(video_id: str, request: Request):
     """Stream final video with range request support."""
     video_path = VIDEOS_DIR / video_id / "final.mp4"
+    
+    if not video_path.exists():
+        video_path = VIDEOS_DIR / video_id / "final_moa.mp4"
+    
     if not video_path.exists():
         raise HTTPException(status_code=404, detail="Video not found")
 
@@ -139,3 +243,22 @@ async def get_video(video_id: str, request: Request):
             "Cache-Control": "public, max-age=3600",
         },
     )
+
+
+@app.get("/")
+def root():
+    return {
+        "service": "Pharma Video Generator",
+        "pipelines": {
+            "pexels_remotion": {
+                "endpoint": "/create",
+                "description": "Product ads, brand videos, patient awareness",
+                "uses": "Pexels stock media + Remotion"
+            },
+            "manim_moa": {
+                "endpoint": "/create-moa",
+                "description": "Mechanism of Action educational videos",
+                "uses": "Manim animations + TTS"
+            }
+        }
+    }

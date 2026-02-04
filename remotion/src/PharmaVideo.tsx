@@ -46,6 +46,11 @@ export const calculateMetadata = ({ props }: { props: PharmaVideoProps }) => {
   };
 };
 
+/* ------------------ Helper to determine if path is local or remote ------------------ */
+const isLocalPath = (src: string): boolean => {
+  return !src.startsWith("http://") && !src.startsWith("https://");
+};
+
 /* ------------------ Scene visual only (NO sequencing here) ------------------ */
 const SceneVisual: React.FC<{ scene: Scene }> = ({ scene }) => {
   return (
@@ -54,12 +59,12 @@ const SceneVisual: React.FC<{ scene: Scene }> = ({ scene }) => {
 
       {scene.video?.src ? (
         <OffthreadVideo
-          src={scene.video.src}
+          src={isLocalPath(scene.video.src) ? staticFile(scene.video.src) : scene.video.src}
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
       ) : scene.image?.src ? (
         <Img
-          src={scene.image.src}
+          src={isLocalPath(scene.image.src) ? staticFile(scene.image.src) : scene.image.src}
           alt={scene.image.alt ?? ""}
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
