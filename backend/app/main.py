@@ -9,6 +9,7 @@ load_dotenv()
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import os
 
@@ -29,6 +30,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files for Remotion to access media and audio
+REMOTION_PUBLIC = REMOTION_DIR / "public"
+app.mount("/media", StaticFiles(directory=str(REMOTION_PUBLIC / "media")), name="media")
+app.mount("/audio", StaticFiles(directory=str(REMOTION_PUBLIC / "audio")), name="audio")
 
 VIDEOS_DIR = OUTPUTS_DIR / "videos"
 
@@ -67,7 +73,7 @@ def create_video(body: CreateRequest):
     )
 
     # Stage 2: Pexels + LLM-generated Remotion TSX
-    run_stage2(scenes_data, script)
+    run_stage2(scenes_data, script, video_id)
 
     # Stage 4: TTS
     scene_ids = [s["scene_id"] for s in scenes]
