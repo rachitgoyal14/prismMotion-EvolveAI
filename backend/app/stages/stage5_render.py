@@ -5,6 +5,7 @@ Uses npx remotion render with composition PharmaVideo and props from scenes_with
 import json
 import subprocess
 from pathlib import Path
+import platform
 
 from app.paths import OUTPUTS_DIR, REMOTION_DIR
 
@@ -52,8 +53,10 @@ def render_remotion(video_id: str) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     final_path = out_dir / "final.mp4"
 
+    npx_cmd = "npx.cmd" if platform.system() == "Windows" else "npx"
+
     cmd = [
-        "npx.cmd",
+        npx_cmd,
         "remotion",
         "render",
         "src/index.ts",

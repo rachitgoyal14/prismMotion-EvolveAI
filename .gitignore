@@ -10,3 +10,5 @@ backend/app/outputs/
 *.mp4
 *.wav
 *.log
+.DS_Store
+../remotion/src/PharmaVideo.tsx
