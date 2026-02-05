@@ -11,4 +11,5 @@ backend/app/outputs/
 *.wav
 *.log
 .DS_Store
-../remotion/src/PharmaVideo.tsx
+package-lock.json
+public/media

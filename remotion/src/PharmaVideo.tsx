@@ -1,142 +1,150 @@
-import React from 'react';
-import {AbsoluteFill, Sequence, OffthreadVideo, Img} from 'remotion';
+import React from "react";
+import {
+  AbsoluteFill,
+  Sequence,
+  Img,
+  useVideoConfig,
+  OffthreadVideo,
+  Audio,
+  staticFile,
+} from "remotion";
 
-interface Scene {
-	scene_id: number;
-	concept: string;
-	visual_description: string;
-	duration_sec: number;
-	pexels_image: {
-		id: number;
-		src: string;
-		photographer: string;
-		alt: string;
-	};
-	pexels_video?: {
-		id: number;
-		src: string;
-		user: string;
-		duration: number;
-	};
-	script: string;
-	image: {
-		src: string;
-		alt: string;
-	};
-	video?: {
-		src: string;
-	};
-}
-
-interface Props {
-	scenes: Scene[];
-}
-
-const TEXT_BAR_HEIGHT = 120;
-
-const TextOverlay: React.FC<{text: string}> = ({text}) => {
-	return (
-		<AbsoluteFill style={{justifyContent: 'flex-end', alignItems: 'center', pointerEvents: 'none'}}>
-			<div
-				style={{
-					width: '100%',
-					height: TEXT_BAR_HEIGHT,
-					backgroundColor: 'rgba(0, 0, 0, 0.5)',
-					display: 'flex',
-					alignItems: 'center',
-					justifyContent: 'center',
-					padding: '0 40px',
-					textAlign: 'center',
-					color: 'white',
-					fontSize: 36,
-					lineHeight: 1.3,
-					fontWeight: 600,
-					fontFamily: 'Arial, sans-serif',
-				}}>
-				{text}
-			</div>
-		</AbsoluteFill>
-	);
+export type Scene = {
+  scene_id: number;
+  duration_sec: number;
+  concept: string;
+  script: string;
+  image?: { src: string; alt?: string };
+  video?: { src: string } | null;
+  /**
+   * Audio path relative to Remotion public folder.
+   * Example: "audio/<video_id>/scene_1.wav"
+   */
+  audio_src?: string | null;
 };
 
-export const PharmaVideo: React.FC<Props> = ({scenes}) => {
-	const fps = 30;
+export type PharmaVideoProps = {
+  scenes: Scene[];
+};
 
-	// Calculate cumulative from frames for each scene
-	const scenesWithFrom = scenes.map((scene, index) => {
-		const from = scenes
-			.slice(0, index)
-			.reduce((acc, s) => acc + s.duration_sec * fps, 0);
-		return {...scene, from};
-	});
+/* ------------------ Metadata (SINGLE source of truth) ------------------ */
+export const calculateMetadata = ({ props }: { props: PharmaVideoProps }) => {
+  const fps = 30;
 
-	// Determine if any scene has video
-	const hasVideo = scenes.some(scene => scene.video && scene.video.src);
+  const sceneFrames = props.scenes.reduce(
+    (sum, s) => sum + Math.max(1, Math.ceil(s.duration_sec * fps)),
+    0
+  );
 
-	return (
-		<>
-			{scenesWithFrom.map(scene => {
-				const {from, duration_sec, script, video, image} = scene;
-				const durationFrames = duration_sec * fps;
+  const creditFrames = fps * 3;
 
-				return (
-					<Sequence key={scene.scene_id} from={from} durationInFrames={durationFrames}>
-						<AbsoluteFill style={{backgroundColor: 'black', justifyContent: 'center', alignItems: 'center'}}>
-							{video && video.src ? (
-								<OffthreadVideo
-									src={video.src}
-									style={{
-										width: '100%',
-										height: '100%',
-										objectFit: 'cover',
-									}}
-								/>
-							) : (
-								<Img
-									src={image.src}
-									alt={image.alt}
-									style={{
-										width: '100%',
-										height: '100%',
-										objectFit: 'cover',
-									}}
-								/>
-							)}
-							<TextOverlay text={script} />
-						</AbsoluteFill>
-					</Sequence>
-				);
-			})}
+  return {
+    fps,
+    width: 1920,
+    height: 1080,
+    durationInFrames: sceneFrames + creditFrames,
+  };
+};
 
-			{/* Credit frame at end */}
-			<Sequence
-				from={scenesWithFrom.reduce(
-					(acc, scene) => acc + scene.duration_sec * fps,
-					0
-				)}
-				durationInFrames={3 * fps}
-			>
-				<AbsoluteFill
-					style={{
-						backgroundColor: 'black',
-						justifyContent: 'center',
-						alignItems: 'center',
-					}}
-				>
-					<div
-						style={{
-							color: 'white',
-							fontSize: 48,
-							fontWeight: 700,
-							fontFamily: 'Arial, sans-serif',
-							textAlign: 'center',
-							padding: '0 40px',
-						}}
-					>
-						{hasVideo ? 'Photos/Videos from Pexels' : 'Photos from Pexels'}
-					</div>
-				</AbsoluteFill>
-			</Sequence>
-		</>
-	);
+/* ------------------ Helper to determine if path is local or remote ------------------ */
+const isLocalPath = (src: string): boolean => {
+  return !src.startsWith("http://") && !src.startsWith("https://");
+};
+
+/* ------------------ Scene visual only (NO sequencing here) ------------------ */
+const SceneVisual: React.FC<{ scene: Scene }> = ({ scene }) => {
+  return (
+    <AbsoluteFill style={{ backgroundColor: "#0a0a0a" }}>
+      {scene.audio_src && <Audio src={staticFile(scene.audio_src)} />}
+
+      {scene.video?.src ? (
+        <OffthreadVideo
+          src={isLocalPath(scene.video.src) ? staticFile(scene.video.src) : scene.video.src}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      ) : scene.image?.src ? (
+        <Img
+          src={isLocalPath(scene.image.src) ? staticFile(scene.image.src) : scene.image.src}
+          alt={scene.image.alt ?? ""}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      ) : (
+        <AbsoluteFill
+          style={{
+            justifyContent: "center",
+            alignItems: "center",
+            backgroundColor: "#222",
+          }}
+        >
+          <span style={{ color: "#fff" }}>Missing media</span>
+        </AbsoluteFill>
+      )}
+
+      <AbsoluteFill
+        style={{
+          justifyContent: "flex-end",
+          padding: 48,
+          background:
+            "linear-gradient(transparent 40%, rgba(0,0,0,0.75) 100%)",
+        }}
+      >
+        <div
+          style={{
+            color: "#fff",
+            fontSize: 32,
+            fontFamily: "sans-serif",
+            maxWidth: 900,
+          }}
+        >
+          {scene.script}
+        </div>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
+
+/* ------------------ Main Composition ------------------ */
+export const PharmaVideo: React.FC<PharmaVideoProps> = ({ scenes }) => {
+  const { fps } = useVideoConfig();
+
+  let from = 0;
+
+  return (
+    <AbsoluteFill style={{ backgroundColor: "black" }}>
+      {scenes.map((scene) => {
+        const durationFrames = Math.max(
+          1,
+          Math.ceil(scene.duration_sec * fps)
+        );
+
+        const start = from;
+        from += durationFrames;
+
+        return (
+          <Sequence
+            key={scene.scene_id}
+            from={start}
+            durationInFrames={durationFrames}
+          >
+            <SceneVisual scene={scene} />
+          </Sequence>
+        );
+      })}
+
+      {/* Credits */}
+      <Sequence from={from} durationInFrames={fps * 3}>
+        <AbsoluteFill
+          style={{
+            backgroundColor: "#111",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <span style={{ color: "#888", fontSize: 24 }}>
+            Photos / Videos from Pexels
+          </span>
+        </AbsoluteFill>
+      </Sequence>
+    </AbsoluteFill>
+  );
 };

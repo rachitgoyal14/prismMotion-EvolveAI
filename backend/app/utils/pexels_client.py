@@ -4,7 +4,9 @@ https://www.pexels.com/api/documentation/
 """
 import os
 import httpx
-
+from pathlib import Path
+import logging
+logger = logging.getLogger(__name__)
 PEXELS_API = "https://api.pexels.com"
 
 
@@ -86,3 +88,19 @@ def get_media_for_scene(search_terms: list[str], prefer_video: bool = False) -> 
         if image and (not prefer_video or video):
             break
     return {"image": image, "video": video}
+
+
+def download_media(url: str, dest_path: Path) -> bool:
+    """Download a file from URL to dest_path. Returns True on success."""
+    try:
+        with httpx.Client() as client:
+            with client.stream("GET", url) as r:  # Use stream() context manager
+                r.raise_for_status()
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(dest_path, "wb") as f:
+                    for chunk in r.iter_bytes(chunk_size=8192):
+                        f.write(chunk)
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to download {url}: {e}")
+        return False
