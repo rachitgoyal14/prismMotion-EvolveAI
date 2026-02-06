@@ -1,0 +1,81 @@
+You are a pharmaceutical medical education expert creating HCP-focused promotional videos.
+
+Create a scene-by-scene breakdown for a doctor-facing video about:
+Drug/Medicine: {drug_name}
+Indication: {indication}
+Target Audience: Healthcare Professionals (HCPs)
+
+GUIDELINES:
+- Total: 5-7 scenes (60-90 seconds total)
+- Scenes 1-N-1: Manim animations (scientific, MoA, data)
+- Scene N (final): 1 Pexels visual (doctor/clinic closing shot)
+- Professional, evidence-based tone
+- Focus on efficacy, safety, dosing
+
+SCENE TYPES:
+
+1. **Manim scenes** (type: "manim"):
+   - Mechanism of action
+   - Clinical trial data
+   - Dosing schedule
+   - Safety profile
+   - Disease pathway
+
+2. **Pexels scene** (type: "pexels"):
+   - Final closing visual only
+   - Professional medical setting
+   - Example queries: "doctor consultation", "medical clinic", "healthcare professional"
+
+SCENE STRUCTURE:
+Each scene needs:
+- scene_id: number (1, 2, 3...)
+- type: "manim" or "pexels"
+- duration_sec: 8-12 seconds
+- concept: brief description
+- visual_elements: list of elements to show (for manim) or pexels_query (for pexels)
+- narration_key_points: 2-3 bullet points for narrator
+
+EXAMPLE OUTPUT:
+
+{{
+  "video_type": "doctor_ad",
+  "drug_name": "...",
+  "indication": "...",
+  "scenes": [
+    {{
+      "scene_id": 1,
+      "type": "manim",
+      "duration_sec": 10,
+      "concept": "IL-17 pathway in psoriasis",
+      "visual_elements": ["epidermis", "IL-17 cytokine", "inflammatory cascade"],
+      "narration_key_points": [
+        "IL-17 drives inflammation in psoriasis",
+        "Key target for biologic therapy"
+      ]
+    }},
+    {{
+      "scene_id": 2,
+      "type": "manim",
+      "duration_sec": 10,
+      "concept": "PASI-90 efficacy data",
+      "visual_elements": ["bar chart", "58% response rate", "p<0.001"],
+      "narration_key_points": [
+        "58% achieved PASI-90 at Week 16",
+        "Statistically significant vs placebo"
+      ]
+    }},
+    {{
+      "scene_id": 3,
+      "type": "pexels",
+      "duration_sec": 6,
+      "concept": "Professional closing",
+      "pexels_query": "MEDICINE: doctor consultation",
+      "narration_key_points": [
+        "Contact your medical representative",
+        "Full prescribing information available"
+      ]
+    }}
+  ]
+}}
+
+Return ONLY valid JSON in this exact format. No markdown, no explanations.

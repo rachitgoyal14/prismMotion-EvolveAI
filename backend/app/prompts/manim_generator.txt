@@ -5,6 +5,8 @@ Generate Manim code for a Mechanism of Action scene with these specifications:
 Scene Details:
 {scene_json}
 
+If the scene includes "pexels_image_path", use ImageMobject(pexels_image_path) to display the image as a background or central element. Import from manim: from manim import ImageMobject. Fade in the image and add text overlays if needed based on narration.
+
 Requirements:
 - Use WHITE background (self.camera.background_color = WHITE)
 - NO LaTeX fonts - use simple sans-serif text
