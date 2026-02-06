@@ -2,7 +2,7 @@
 Pharma video generation pipeline with logging, timing,
 and company asset upload support.
 """
-
+import json
 from pathlib import Path
 import time
 import os
@@ -26,6 +26,8 @@ from fastapi import (
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import os
+import io
 
 # Logging setup
 from app.utils.logging_config import setup_logging, StageLogger
@@ -36,6 +38,13 @@ logger = logging.getLogger(__name__)
 
 from app.utils.generate_uid import generate_video_id
 
+# Utils
+from app.utils.documents import extract_documents_text
+
+# Compliance pipeline
+from app.pipelines.compliance import run_compliance_pipeline
+
+
 # Remotion pipeline
 from app.stages.stage1_scenes import generate_scenes
 from app.stages.stage3_script import generate_script
@@ -45,9 +54,9 @@ from app.stages.stage4_tts import tts_generate
 from app.stages.stage5_render import render_remotion
 
 # MoA / Manim pipeline
-from backend.app.moa_stages.stage1_moa_scenes import generate_moa_scenes
-from backend.app.moa_stages.stage2_moa_manim import run_stage2_moa
-from backend.app.moa_stages.stage5_moa_render import render_moa_video
+from app.moa_stages.stage1_moa_scenes import generate_moa_scenes
+from app.moa_stages.stage2_moa_manim import run_stage2_moa
+from app.moa_stages.stage5_moa_render import render_moa_video
 
 from app.paths import OUTPUTS_DIR
 from app import db
@@ -101,6 +110,14 @@ class CreateMoARequest(BaseModel):
     persona: str = "professional medical narrator"
     tone: str = "clear and educational"
     quality: str = "high"
+
+class CreateComplianceRequest(BaseModel):
+    """Compliance video using Remotion with strict adherence to reference documents"""
+    video_type: str = "compliance_video"
+    prompt: str
+    brand_name: str = ""
+    persona: str = "compliance officer"
+    tone: str = "formal and precise"
 
 class CreateVideoForm:
     def __init__(
@@ -308,6 +325,28 @@ async def create_video(
 
 
 
+@app.post("/create-compliance")
+async def create_compliance_video(
+    payload: str = Form(...),
+    documents: list[UploadFile] = File(default=[]),
+    logo: UploadFile = File(default=None),
+    images: list[UploadFile] = File(default=[]),
+):
+    body = CreateComplianceRequest(**json.loads(payload))
+
+    result = run_compliance_pipeline(
+        payload=body.dict(),
+        documents=documents,
+        logo=logo,
+        images=images,
+    )
+
+    return {
+        "status": "ok",
+        **result,
+    }
+
+
 @app.post("/create-moa")
 async def create_moa_video(body: CreateMoARequest, user_id: str | None = None, video_id: str | None = None):
     pipeline_start = time.time()
@@ -459,3 +498,4 @@ def root():
             }
         }
     }
+

@@ -9,16 +9,23 @@ def generate_scenes(
     topic: str,
     video_type: str = "product_ad",
     brand_name: str = "",
+    reference_docs: str | None = None,
 ) -> dict:
     """Plan pharma video scenes. video_type: brand_ad | patient_awareness | product_ad."""
+
     prompt_path = PROMPTS_DIR / "scene_planner_pharma.txt"
+
     prompt = prompt_path.read_text(encoding="utf-8").format(
         video_type=video_type,
         brand_name=brand_name or "Our Brand",
         topic=topic,
+        reference_docs=(reference_docs[:6000] if reference_docs else ""),
     )
+
     output = call_llm(prompt)
     data = json.loads(output)
+
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
     (OUTPUTS_DIR / "scenes.json").write_text(json.dumps(data, indent=2))
+
     return data

@@ -13,6 +13,8 @@ RULES:
 - No markdown, no explanations
 - Each scene = one clear idea, 5–12 seconds
 - For each scene provide 2–3 Pexels search terms (short, e.g. "pharmaceutical lab", "doctor patient", "medicine pills")
+- If reference documents are provided, base claims strictly on them
+- Do NOT invent medical, clinical, or regulatory claims
 
 JSON FORMAT:
 {{
@@ -34,5 +36,8 @@ TOPIC / BRIEF:
 
 BRAND NAME (if any):
 {brand_name}
+
+REFERENCE DOCUMENTS (optional, use only if relevant):
+{reference_docs}
 
 Generate the scene plan now.
