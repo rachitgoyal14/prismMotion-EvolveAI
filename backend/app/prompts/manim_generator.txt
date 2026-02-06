@@ -5,7 +5,49 @@ Generate Manim code for a Mechanism of Action scene with these specifications:
 Scene Details:
 {scene_json}
 
-If the scene includes "pexels_image_path", use ImageMobject(pexels_image_path) to display the image as a background or central element. Import from manim: from manim import ImageMobject. Fade in the image and add text overlays if needed based on narration.
+**IMAGE HANDLING (CRITICAL FOR PEXELS IMAGES):**
+If the scene includes "pexels_image_path", follow these EXACT steps to avoid crashes:
+
+1. **Load image with error handling:**
+```python
+try:
+    bg_image = ImageMobject("{pexels_image_path}")
+    bg_image.height = config.frame_height * 0.4  # Use 40% of frame height (NEVER use scale_to_fit_width)
+    bg_image.set_opacity(0.6)  # Make semi-transparent for background
+    bg_image.to_edge(DOWN, buff=0)  # Position at bottom
+except Exception as e:
+    # Fallback: colored rectangle if image fails
+    bg_image = Rectangle(
+        width=config.frame_width,
+        height=config.frame_height * 0.4,
+        fill_color=BLUE_E,
+        fill_opacity=0.2,
+        stroke_width=0
+    ).to_edge(DOWN, buff=0)
+```
+
+2. **Add image to scene WITHOUT animation first (more stable):**
+```python
+self.add(bg_image)  # Add directly, don't use FadeIn initially
+self.play(bg_image.animate.set_opacity(0.7), run_time=1)  # Then animate opacity
+```
+
+3. **For fadeout, fade elements separately:**
+```python
+self.play(
+    FadeOut(text_element1),
+    FadeOut(text_element2),
+    FadeOut(bg_image),  # Fade image separately
+    run_time=1
+)
+```
+
+**WHY THESE RULES:**
+- `scale_to_fit_width()` can cause memory issues with large images
+- Using `.height = X` is more stable than `.scale_to_fit_width()`
+- Adding image first with `self.add()` then animating opacity is more reliable than `FadeIn()`
+- Never wrap ImageMobject in nested VGroups for FadeOut
+- Always use try/except for image loading
 
 Requirements:
 - Use WHITE background (self.camera.background_color = WHITE)
@@ -16,7 +58,7 @@ Requirements:
 
 CRITICAL IMPORT RULES - YOU MUST FOLLOW THESE:
 1. ALWAYS start with: from manim import *
-2. ALWAYS import config if using FRAME_WIDTH, FRAME_HEIGHT: from manim import config
+2. ALWAYS import config if using frame dimensions: from manim import config
 3. Available constants: UP, DOWN, LEFT, RIGHT, ORIGIN
 4. For frame dimensions use: config.frame_width, config.frame_height
 5. DO NOT use FRAME_WIDTH or FRAME_HEIGHT directly - they don't exist in newer Manim
@@ -53,9 +95,10 @@ Manim Best Practices:
 - Use self.camera.background_color = WHITE (not config.background_color)
 - For text colors on white background, use BLACK or dark colors
 
-CORRECT Example:
+CORRECT Example WITH IMAGE:
 ```python
 from manim import *
+from manim import config
 
 class Scene{scene_id}(Scene):
     def construct(self):
@@ -65,69 +108,76 @@ class Scene{scene_id}(Scene):
         # Define custom colors
         medical_blue = "#2E86AB"
         medical_red = "#A23B72"
-        medical_green = "#4CAF50"
         
-        # Create visual elements
-        receptor = Circle(radius=1, color=medical_blue, fill_opacity=0.5)
-        drug = Circle(radius=0.5, color=medical_red, fill_opacity=0.8)
+        # Load background image SAFELY
+        try:
+            bg_image = ImageMobject("/path/to/image.jpg")
+            bg_image.height = config.frame_height * 0.4  # NEVER use scale_to_fit_width
+            bg_image.set_opacity(0.6)
+            bg_image.to_edge(DOWN, buff=0)
+        except Exception as e:
+            bg_image = Rectangle(
+                width=config.frame_width,
+                height=config.frame_height * 0.4,
+                fill_color=BLUE_E,
+                fill_opacity=0.2,
+                stroke_width=0
+            ).to_edge(DOWN, buff=0)
         
-        # Custom shape example (checkmark)
-        checkmark = VMobject()
-        checkmark.set_points_as_corners([
-            LEFT * 0.3 + DOWN * 0.2,
-            ORIGIN,
-            RIGHT * 0.6 + UP * 0.4
-        ])
-        checkmark.set_stroke(color=medical_green, width=6)
-        checkmark.scale(0.5).next_to(receptor, RIGHT)
+        # Add image WITHOUT FadeIn (more stable)
+        self.add(bg_image)
+        self.play(bg_image.animate.set_opacity(0.7), run_time=1)
         
-        # Add labels with BLACK text for white background
-        label = Text("Receptor", font="Sans", font_size=36, color=BLACK)
-        label.next_to(receptor, DOWN)
+        # Create text overlays
+        title = Text("Medical Title", font="Sans", font_size=48, color=BLACK)
+        title.to_edge(UP, buff=0.5)
         
         # Animate
-        self.play(FadeIn(receptor), FadeIn(label))
+        self.play(Write(title))
+        self.wait(2)
+        
+        # Fade out separately
+        self.play(
+            FadeOut(title),
+            FadeOut(bg_image),
+            run_time=1
+        )
         self.wait(0.5)
-        self.play(drug.animate.move_to(receptor.get_center()))
-        self.wait(0.3)
-        self.play(Create(checkmark))
-        self.wait(1)
 ```
 
 WRONG - DO NOT DO THIS:
 ```python
-# ❌ Missing imports
-class Scene1(Scene):
-    def construct(self):
-        # ❌ Using undefined FRAME_WIDTH
-        text.set_width(FRAME_WIDTH - 1)
-        
-        # ❌ Using config.background_color instead of self.camera.background_color
-        config.background_color = WHITE
-        
-        # ❌ SVGMobject doesn't accept path_string parameter
-        checkmark = SVGMobject(
-            path_string="M10 50 L40 80 L90 20",
-            stroke_color=GREEN
-        )
-        
-        # ❌ CORRECT way for custom shapes:
-        # Use VMobject with set_points_as_corners() instead
+# ❌ Using scale_to_fit_width (causes crashes)
+bg_image.scale_to_fit_width(config.frame_width)
+
+# ❌ FadeIn directly on ImageMobject (can hang)
+self.play(FadeIn(bg_image))
+
+# ❌ Nested VGroups with ImageMobject
+self.play(FadeOut(VGroup(text, VGroup(bg_image))))
+
+# ✅ CORRECT ways:
+bg_image.height = config.frame_height * 0.4  # Use .height instead
+self.add(bg_image)  # Add first
+self.play(bg_image.animate.set_opacity(0.7))  # Then animate opacity
+self.play(FadeOut(bg_image))  # Fade separately, not nested
 ```
 
 Generate COMPLETE, WORKING Manim code for this scene. 
 
 VALIDATION CHECKLIST BEFORE RETURNING:
 ✓ Starts with "from manim import *"
+✓ Imports config if using frame dimensions: "from manim import config"
 ✓ Class name is Scene{scene_id}
 ✓ Uses self.camera.background_color = WHITE
 ✓ All text uses color=BLACK (for white background)
-✓ No usage of FRAME_WIDTH or FRAME_HEIGHT (use config.frame_width if needed)
+✓ If pexels_image_path exists: Uses try/except, .height (not scale_to_fit_width), self.add() then animate opacity
+✓ No nested VGroups around ImageMobject in FadeOut
 ✓ All animations use self.play() or self.wait()
 ✓ Code is syntactically valid Python
 
 Return ONLY valid JSON:
 {{
   "scene_id": {scene_id},
-  "manim_code": "from manim import *\n\nclass Scene{scene_id}(Scene):\n    def construct(self):\n        self.camera.background_color = WHITE\n        ..."
+  "manim_code": "from manim import *\nfrom manim import config\n\nclass Scene{scene_id}(Scene):\n    def construct(self):\n        self.camera.background_color = WHITE\n        ..."
 }}
