@@ -18,11 +18,13 @@ MEDIA_PUBLIC_ROOT = REMOTION_DIR / "public" / "media"
 
 def render_remotion(video_id: str) -> Path:
     """
-    Load scenes_with_media + script, build props, run remotion render.
+    Load scenes_with_media + script + animations, build props, run remotion render.
     Output: outputs/videos/<video_id>/final.mp4
     """
     scenes_path = OUTPUTS_DIR / "scenes_with_media.json"
     script_path = OUTPUTS_DIR / "script.json"
+    animations_path = OUTPUTS_DIR / "animations.json"
+    
     if not scenes_path.exists():
         raise FileNotFoundError("Run stage2 first: scenes_with_media.json not found")
     if not script_path.exists():
@@ -31,6 +33,15 @@ def render_remotion(video_id: str) -> Path:
     scenes_data = json.loads(scenes_path.read_text(encoding="utf-8"))
     script_data = json.loads(script_path.read_text(encoding="utf-8"))
     script_map = {s["scene_id"]: s["script"] for s in script_data}
+    
+    # Load animations if available (optional)
+    animations_map = {}
+    if animations_path.exists():
+        animations_data = json.loads(animations_path.read_text(encoding="utf-8"))
+        animations_map = animations_data.get("animations", {})
+        logger.info(f"Loaded animations for {len(animations_map)} scenes")
+    else:
+        logger.info("No animations.json found - animations will not be applied")
 
     scenes = scenes_data.get("scenes", [])
     props_scenes = []
@@ -96,6 +107,13 @@ def render_remotion(video_id: str) -> Path:
             # Relative path under remotion/public; consumed via staticFile() in PharmaVideo.tsx
             "audio_src": audio_rel_path,
         }
+        
+        # Add animation metadata if available
+        if str(sid) in animations_map:
+            entry["animation"] = animations_map[str(sid)]
+        elif sid in animations_map:
+            entry["animation"] = animations_map[sid]
+        
         props_scenes.append(entry)
 
     props = {"scenes": props_scenes}
@@ -111,7 +129,7 @@ def render_remotion(video_id: str) -> Path:
         raise RuntimeError("npx not found in PATH. Ensure Node.js is installed and in your PATH.")
 
     cmd = [
-        "npx",  # This works cross-platform; subprocess will resolve .cmd on Windows if needed
+        "npx.cmd",  # This works cross-platform; subprocess will resolve .cmd on Windows if needed
         "remotion",
         "render",
         "src/index.ts",
