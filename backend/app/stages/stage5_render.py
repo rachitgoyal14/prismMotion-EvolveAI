@@ -45,6 +45,9 @@ def render_remotion(video_id: str) -> Path:
 
     scenes = scenes_data.get("scenes", [])
     props_scenes = []
+    branding = scenes_data.get("branding", {})
+
+
 
     # Copy audio into Remotion public folder so it can be served via staticFile().
     # Resulting structure:
@@ -57,6 +60,45 @@ def render_remotion(video_id: str) -> Path:
     #   remotion/public/media/<video_id>/scene_<id>_image.jpg or _video.mp4
     media_public_dir = MEDIA_PUBLIC_ROOT / video_id
     media_public_dir.mkdir(parents=True, exist_ok=True)
+    # # ---------------- Branding Assets ----------------
+    # branding_public_dir = REMOTION_DIR / "public" / "assets" / video_id
+    # branding_public_dir.mkdir(parents=True, exist_ok=True)
+
+    # branding_result = {"logos": [], "images": []}
+
+    # for category in ["logos", "images"]:
+    #     for asset_path in branding.get(category, []):
+
+    #         # 🔥 FIX: resolve relative to OUTPUTS_DIR
+    #         src = OUTPUTS_DIR / asset_path
+
+    #         if not src.exists():
+    #             logger.warning(f"Branding asset missing: {src}")
+    #             continue
+
+    #         dest_dir = branding_public_dir / category
+    #         dest_dir.mkdir(parents=True, exist_ok=True)
+
+    #         dest = dest_dir / src.name
+    #         shutil.copy2(src, dest)
+
+    #         branding_result[category].append(
+    #             f"assets/{video_id}/{category}/{src.name}"
+    #         )
+
+    # logger.info(f"Branding assets copied: {branding_result}")
+    # Branding already copied in Stage 2 — just pass through
+    branding_result = scenes_data.get("branding", {"logos": [], "images": []})
+    for category in ["logos", "images"]:
+        branding_result[category] = [
+            path for path in branding_result.get(category, [])
+            if (REMOTION_DIR / "public" / path).exists()
+    ]
+
+
+    logger.info(f"Using branding from scenes JSON: {branding_result}")
+
+
 
     for s in scenes:
         sid = s.get("scene_id")
@@ -116,7 +158,7 @@ def render_remotion(video_id: str) -> Path:
         
         props_scenes.append(entry)
 
-    props = {"scenes": props_scenes}
+    props = {"scenes": props_scenes, "branding": branding_result}
     out_dir = VIDEOS_DIR / video_id
     out_dir.mkdir(parents=True, exist_ok=True)
     # Write props to a file to avoid Windows CLI JSON escaping issues.
