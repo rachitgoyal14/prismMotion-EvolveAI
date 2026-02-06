@@ -1,22 +1,38 @@
-You are an expert at writing Remotion (React) compositions in TypeScript/TSX for pharmaceutical videos.
+You are an expert at writing Remotion (React) compositions in TypeScript/TSX for pharmaceutical videos with animations and transitions.
 
 TASK:
-Generate a single Remotion composition that renders the given scenes using Remotion's <Sequence>, <Img>, <Video>, <AbsoluteFill>, and <OffthreadVideo> where appropriate.
-Use the provided Pexels media (image src, video src) for each scene. Prefer video when available, otherwise image.
+Generate animation metadata for each scene that will be passed to the PharmaVideo component. The component will apply these animations automatically.
 
-RULES:
-- Output valid JSON with one key: "tsx_code" (string). The value is the full TSX source for ONE file that exports a named component PharmaVideo (e.g. export const PharmaVideo: React.FC<Props> = ...).
-- No markdown code fences, no explanations outside the JSON.
-- Use Remotion imports from "remotion" (e.g. AbsoluteFill, Sequence, useCurrentFrame, useVideoConfig, Img, Video/OffthreadVideo).
-- FPS = 30, width = 1920, height = 1080.
-- Each scene has: scene_id, duration_sec, concept, image (with .src), video (optional, with .src), script (narration text for overlay).
-- You must export a React component named PharmaVideo (export const PharmaVideo or export function PharmaVideo) that receives props: { scenes: Array<Scene> }. Root.tsx will import it; do not register Composition yourself.
-- Calculate from = sum of previous scenes' duration_sec (in frames: from = (duration_sec * 30) cumulative).
-- Show text overlay (script) as simple white text, centered or bottom, readable. Use a semi-transparent bar if needed.
-- If video is provided for a scene, use <OffthreadVideo> or <Video> with that src; otherwise use <Img> with image.src.
-- Credit Pexels: at the end of the video add a 3-second frame with text "Photos/Videos from Pexels" (or only "Photos from Pexels" if no videos).
+IMPORTANT: The PharmaVideo.tsx component already supports animations. Your job is to generate the animation configuration for each scene in JSON format, NOT generate TSX code.
 
-INPUT (scenes with Pexels media and script):
+ANIMATION SUPPORT:
+Each scene can have:
+- entrance: fade | slideIn | slideUp | slideDown | slideLeft | slideRight | zoomIn (duration_sec: 0.3-1.0, easing: linear | easeInOut | easeIn | easeOut)
+- exit: fade | slideOut | slideUp | slideDown | slideLeft | slideRight | zoomOut (duration_sec: 0.3-1.0, easing: linear | easeInOut | easeIn | easeOut)
+- transition: fade | slideLeft | slideRight | slideUp | slideDown | zoomFade (duration_sec: 0.3-1.0, easing: linear | easeInOut | easeIn | easeOut)
+
+GUIDELINES:
+- Use entrance animations to smoothly introduce each scene (e.g., "fade" or "slideIn" for 0.5s)
+- Use exit animations to smoothly transition away from a scene (e.g., "fade" for 0.5s)
+- Use transition animations for visual continuity between scenes (e.g., "fade" or "slideLeft" for 0.5s)
+- For pharmaceutical videos, prefer smooth animations: fade, slideIn/Out, zoomIn/Out
+- Match animation types to scene content (e.g., zoom for product close-ups, slide for transitional content)
+- Keep animations subtle and professional (0.3-0.8 seconds is typical)
+
+INPUT (scenes with media and script):
 {scenes_with_media_json}
 
-Generate the TSX code and return ONLY a JSON object: {{ "tsx_code": "<full tsx string>" }}
+OUTPUT: Return ONLY a JSON object with key "animations" containing an array of animation configs:
+{{
+  "animations": [
+    {{
+      "scene_id": 1,
+      "animation": {{
+        "entrance": {{"type": "fade", "duration_sec": 0.5, "easing": "easeOut"}},
+        "exit": {{"type": "fade", "duration_sec": 0.5, "easing": "easeIn"}},
+        "transition": {{"type": "slideLeft", "duration_sec": 0.5, "easing": "easeInOut"}}
+      }}
+    }},
+    ...
+  ]
+}}

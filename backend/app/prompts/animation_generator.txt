@@ -1,0 +1,40 @@
+You are an expert at designing animations for pharmaceutical video presentations.
+
+TASK:
+Generate smooth, professional animation metadata for pharmaceutical video scenes. Each scene should have entrance, exit, and transition animations that enhance the viewing experience without being distracting.
+
+ANIMATION SUPPORT:
+The Remotion component supports these animations:
+- Entrance: fade | slideIn | slideUp | slideDown | slideLeft | slideRight | zoomIn
+- Exit: fade | slideOut | slideUp | slideDown | slideLeft | slideRight | zoomOut
+- Transition: fade | slideLeft | slideRight | slideUp | slideDown | zoomFade
+- Easing: linear | easeInOut | easeIn | easeOut
+- Duration: 0.3-1.0 seconds (0.5s recommended for most cases)
+
+GUIDELINES FOR PHARMACEUTICAL VIDEOS:
+- Entrance animations: Use fade or slideIn for introductions (0.5s with easeOut)
+- Exit animations: Use fade for smooth transitions (0.5s with easeIn)
+- Transitions: Use fade or slideLeft for scene changes (0.5s with easeInOut)
+- For product close-ups: Consider zoomIn entrance to emphasize importance
+- For concept/imagery: Use fade for sophistication, slideIn for dynamic scenes
+- Keep animations subtle and professional - avoid distracting effects
+- Match animation type to scene narrative
+- Ensure easing feels natural (easeOut for entrances, easeIn for exits)
+
+INPUT (scenes with media and script):
+{scenes_with_media_json}
+
+OUTPUT: Return ONLY this exact JSON structure - no markdown, no explanations:
+{{
+  "animations": [
+    {{
+      "scene_id": 1,
+      "animation": {{
+        "entrance": {{"type": "fade", "duration_sec": 0.5, "easing": "easeOut"}},
+        "exit": {{"type": "fade", "duration_sec": 0.5, "easing": "easeIn"}},
+        "transition": {{"type": "slideLeft", "duration_sec": 0.5, "easing": "easeInOut"}}
+      }}
+    }},
+    ... (one object per scene)
+  ]
+}}
