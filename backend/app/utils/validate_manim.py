@@ -1,6 +1,6 @@
 """
 Validate generated Manim code before attempting to render.
-Catches common issues: missing imports, syntax errors, undefined variables.
+Catches common issues: missing imports, syntax errors, undefined variables, and ImageMobject pitfalls.
 """
 import ast
 import re
@@ -19,7 +19,9 @@ class ManimCodeValidator:
         r"\bFRAME_HEIGHT\b",  # Should use config.frame_height
         r"config\.background_color\s*=",  # Should use self.camera.background_color
         r"SVGMobject\s*\([^)]*path_string\s*=",  # SVGMobject doesn't accept path_string
-        r"\.set_points_as_corners\s*\(\s*\[",  # Often misused
+        r"ImageMobject\([^)]+\)\.scale_to_fit_width",  # Dangerous: causes crashes
+        r"FadeIn\s*\(\s*ImageMobject",  # Dangerous: direct FadeIn on ImageMobject
+        r"VGroup\s*\([^)]*VGroup\s*\(\s*[^)]*ImageMobject",  # Nested VGroups with ImageMobject
     ]
     
     def validate(self, code: str, scene_id: int) -> Tuple[bool, Optional[str]]:
@@ -49,7 +51,7 @@ class ManimCodeValidator:
         if class_error:
             return False, class_error
         
-        # Check 4: No forbidden patterns
+        # Check 4: No forbidden patterns (including image issues)
         forbidden_error = self._check_forbidden_patterns(code)
         if forbidden_error:
             return False, forbidden_error
@@ -58,6 +60,11 @@ class ManimCodeValidator:
         if not self._has_construct_method(code):
             return False, "Missing construct() method in Scene class"
         
+        # Check 6: ImageMobject usage is safe
+        image_error = self._check_image_mobject_safety(code)
+        if image_error:
+            return False, image_error
+        
         return True, None
     
     def _has_required_imports(self, code: str) -> bool:
@@ -65,6 +72,11 @@ class ManimCodeValidator:
         for required in self.REQUIRED_IMPORTS:
             if required not in code:
                 return False
+        
+        # If using config.frame_width/height, must import config
+        if "config.frame" in code and "from manim import config" not in code:
+            return False
+            
         return True
     
     def _check_syntax(self, code: str) -> Optional[str]:
@@ -125,9 +137,53 @@ class ManimCodeValidator:
                 elif "SVGMobject" in matched_text and "path_string" in matched_text:
                     return (
                         f"SVGMobject doesn't accept 'path_string' parameter. "
-                        f"Use VMobject with .set_points_as_corners() instead, or use basic shapes like Circle, Rectangle, Polygon. "
-                        f"Example: checkmark = VMobject(); checkmark.set_points_as_corners([start, middle, end])"
+                        f"Use VMobject with .set_points_as_corners() instead, or use basic shapes."
                     )
+                elif "scale_to_fit_width" in matched_text and "ImageMobject" in code:
+                    return (
+                        f"Found 'ImageMobject(...).scale_to_fit_width()' which causes crashes with large images. "
+                        f"Use 'image.height = config.frame_height * 0.4' instead. "
+                        f"Example: bg_image.height = config.frame_height * 0.4"
+                    )
+                elif "FadeIn" in matched_text and "ImageMobject" in matched_text:
+                    return (
+                        f"Found 'FadeIn(ImageMobject(...))' which can hang during rendering. "
+                        f"Use 'self.add(image)' first, then 'self.play(image.animate.set_opacity(0.7))'. "
+                        f"Example: self.add(bg_image); self.play(bg_image.animate.set_opacity(0.7), run_time=1)"
+                    )
+                elif "VGroup" in matched_text and "ImageMobject" in code:
+                    return (
+                        f"Found nested VGroups containing ImageMobject, which can cause issues. "
+                        f"Fade out ImageMobject separately: self.play(FadeOut(text), FadeOut(image))"
+                    )
+        
+        return None
+    
+    def _check_image_mobject_safety(self, code: str) -> Optional[str]:
+        """Check ImageMobject usage for common crash patterns."""
+        if "ImageMobject" not in code:
+            return None  # No images, no problem
+        
+        # Check 1: Must use try/except when loading images
+        if "ImageMobject(" in code and "try:" not in code:
+            logger.warning("ImageMobject used without try/except - recommended for robustness")
+            # Not a hard error, just a warning
+        
+        # Check 2: Should use .height, not .scale_to_fit_width()
+        if "scale_to_fit_width" in code and "ImageMobject" in code:
+            return (
+                "ImageMobject with scale_to_fit_width() detected - this causes crashes. "
+                "Use 'image.height = config.frame_height * 0.4' instead"
+            )
+        
+        # Check 3: Should not use direct FadeIn on ImageMobject
+        if re.search(r"FadeIn\s*\(\s*\w+\s*\)", code) and "ImageMobject" in code:
+            # Check if the FadeIn target might be an image
+            if re.search(r"(bg_image|image|photo|picture)\s*=\s*ImageMobject", code):
+                return (
+                    "Direct FadeIn on ImageMobject detected - this can hang. "
+                    "Use: self.add(image); self.play(image.animate.set_opacity(0.7))"
+                )
         
         return None
     

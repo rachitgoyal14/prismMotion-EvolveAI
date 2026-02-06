@@ -12,4 +12,4 @@ backend/app/outputs/
 *.log
 .DS_Store
 package-lock.json
-public/media
+remotion/public/
