@@ -1,17 +1,19 @@
 """
 Pharma video generation pipeline with logging and timing.
 """
+import json
 from pathlib import Path
 import time
 
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
+import io
 
 # Setup logging FIRST
 from app.utils.logging_config import setup_logging, StageLogger
@@ -20,6 +22,13 @@ setup_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 from app.utils.generate_uid import generate_video_id
+
+# Utils
+from app.utils.documents import extract_documents_text
+
+# Compliance pipeline
+from app.pipelines.compliance import run_compliance_pipeline
+
 
 # Remotion pipeline
 from app.stages.stage1_scenes import generate_scenes
@@ -67,13 +76,27 @@ class CreateMoARequest(BaseModel):
     tone: str = "clear and educational"
     quality: str = "high"
 
+class CreateComplianceRequest(BaseModel):
+    """Compliance video using Remotion with strict adherence to reference documents"""
+    video_type: str = "compliance_video"
+    prompt: str
+    brand_name: str = ""
+    persona: str = "compliance officer"
+    tone: str = "formal and precise"
+
 
 @app.post("/create")
-def create_video(body: CreateRequest):
+async def create_video(
+    payload: str = Form(...),
+    documents: list[UploadFile] = File(default=[]),
+):
+    body = CreateRequest(**json.loads(payload))
+
     """Pexels + Remotion pipeline."""
     pipeline_logger = StageLogger("REMOTION PIPELINE")
     pipeline_start = time.time()
     
+    document_context = extract_documents_text(documents) if documents else ""
     video_id = generate_video_id()
     logger.info(f"Starting Remotion pipeline - Video ID: {video_id}", extra={'stage': 'PIPELINE START'})
     
@@ -81,7 +104,13 @@ def create_video(body: CreateRequest):
         # Stage 1
         stage_logger = StageLogger("Scene Planning")
         stage_logger.start()
-        scenes_data = generate_scenes(topic=body.topic, video_type=body.video_type, brand_name=body.brand_name or "Our Brand")
+        scenes_data = generate_scenes(
+            topic=body.topic,
+            video_type=body.video_type,
+            brand_name=body.brand_name or "Our Brand",
+            reference_docs=document_context,  # NEW
+        )
+
         scenes = scenes_data.get("scenes", [])
         stage_logger.complete(f"{len(scenes)} scenes planned")
         
@@ -91,7 +120,13 @@ def create_video(body: CreateRequest):
         # Stage 3
         stage_logger = StageLogger("Script Writing")
         stage_logger.start()
-        script = generate_script(scenes, persona=body.persona, tone=body.tone)
+        script = generate_script(
+            scenes,
+            persona=body.persona,
+            tone=body.tone,
+            reference_docs=document_context,  # NEW
+        )
+
         stage_logger.complete(f"{len(script)} scripts generated")
         
         # Stage 2
@@ -136,6 +171,28 @@ def create_video(body: CreateRequest):
     except Exception as e:
         logger.error(f"Pipeline failed: {e}", extra={'stage': 'PIPELINE ERROR'})
         raise HTTPException(status_code=500, detail=f"Pipeline failed: {e}")
+
+
+@app.post("/create-compliance")
+async def create_compliance_video(
+    payload: str = Form(...),
+    documents: list[UploadFile] = File(default=[]),
+    logo: UploadFile = File(default=None),
+    images: list[UploadFile] = File(default=[]),
+):
+    body = CreateComplianceRequest(**json.loads(payload))
+
+    result = run_compliance_pipeline(
+        payload=body.dict(),
+        documents=documents,
+        logo=logo,
+        images=images,
+    )
+
+    return {
+        "status": "ok",
+        **result,
+    }
 
 
 @app.post("/create-moa")
@@ -273,3 +330,4 @@ def root():
             }
         }
     }
+

@@ -7,6 +7,9 @@ RULES:
 - No claims that require regulatory approval unless the brief explicitly asks
 - Persona: {persona}
 - Tone: {tone}
+- If documents are provided, do not contradict them
+- Do not invent claims or dosages
+- Use compliant, patient-safe language
 
 SCENES (with durations):
 {scenes}
@@ -15,3 +18,7 @@ Output ONLY a JSON array:
 [
   {{ "scene_id": 1, "script": "Spoken narration for this scene." }}
 ]
+
+REFERENCE DOCUMENTS (optional, use only if relevant):
+{reference_docs}
+
