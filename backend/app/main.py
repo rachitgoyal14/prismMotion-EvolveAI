@@ -45,9 +45,9 @@ from app.stages.stage4_tts import tts_generate
 from app.stages.stage5_render import render_remotion
 
 # MoA / Manim pipeline
-from backend.app.moa_stages.stage1_moa_scenes import generate_moa_scenes
-from backend.app.moa_stages.stage2_moa_manim import run_stage2_moa
-from backend.app.moa_stages.stage5_moa_render import render_moa_video
+from app.moa_stages.stage1_moa_scenes import generate_moa_scenes
+from app.moa_stages.stage2_moa_manim import run_stage2_moa
+from app.moa_stages.stage5_moa_render import render_moa_video
 
 from app.paths import OUTPUTS_DIR
 from app import db
@@ -179,7 +179,6 @@ async def create_video(
     logo: UploadFile | None = File(default=None),
     image: UploadFile | None = File(default=None),
     user_id: str | None = Form(None),
-    video_id: str | None = Form(None),
 ):
 
     
@@ -200,9 +199,7 @@ async def create_video(
 
 
     pipeline_start = time.time()
-    # Use provided video_id or generate a new one
-    if not video_id:
-        video_id = generate_video_id()
+    video_id = generate_video_id()
 
     # Ensure user + session + video record in DB
     try:
@@ -309,11 +306,9 @@ async def create_video(
 
 
 @app.post("/create-moa")
-async def create_moa_video(body: CreateMoARequest, user_id: str | None = None, video_id: str | None = None):
+async def create_moa_video(body: CreateMoARequest, user_id: str | None = None):
     pipeline_start = time.time()
-    # Use provided video_id or generate a new one
-    if not video_id:
-        video_id = generate_video_id()
+    video_id = generate_video_id()
 
     logger.info(
         f"Starting MoA pipeline - Video ID: {video_id}",
@@ -423,15 +418,13 @@ async def get_video(video_id: str, request: Request):
     return FileResponse(video_path, media_type="video/mp4")
 
 
-@app.get("/generate-uuid")
-def generate_uuid():
-    """Generate UUIDs for a video session (user_id and video_id)."""
+@app.get("/generate-user-id")
+def generate_user_id():
+    """Generate a user ID for tracking multiple video generations."""
     user_id = str(uuid.uuid4())
-    video_id = generate_video_id()
     return {
         "user_id": user_id,
-        "video_id": video_id,
-        "message": "Pass both user_id and video_id to /create or /create-moa endpoints"
+        "message": "Pass this user_id to /create or /create-moa endpoints. A new video_id will be generated for each video."
     }
 
 
@@ -440,10 +433,10 @@ def root():
     return {
         "service": "Pharma Video Generator",
         "endpoints": {
-            "generate_uuid": {
+            "generate_user_id": {
                 "method": "GET",
-                "path": "/generate-uuid",
-                "description": "Generate a new UUID for tracking a video session"
+                "path": "/generate-user-id",
+                "description": "Generate a new user ID for tracking multiple videos"
             }
         },
         "pipelines": {
