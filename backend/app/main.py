@@ -11,8 +11,8 @@ import shutil
 import uuid
 from typing import Annotated
 
-from dotenv import load_dotenv
-load_dotenv()
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv())
 
 from fastapi import (
     FastAPI,
@@ -50,6 +50,7 @@ from app.stages.stage2_moa_manim import run_stage2_moa
 from app.stages.stage5_moa_render import render_moa_video
 
 from app.paths import OUTPUTS_DIR
+from app import db
 
 # ---------------------------------------------------------------------
 
@@ -64,6 +65,23 @@ app.add_middleware(
 )
 
 VIDEOS_DIR = OUTPUTS_DIR / "videos"
+
+
+@app.on_event("startup")
+async def startup_event():
+    try:
+        await db.init_db()
+        logger.info("Database initialized")
+    except Exception as e:
+        logger.warning(f"DB init failed: {e}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    try:
+        await db.close_db()
+    except Exception:
+        pass
 
 
 class CreateRequest(BaseModel):
@@ -160,6 +178,8 @@ async def create_video(
     tone: str = Form("clear and reassuring"),
     logo: UploadFile | None = File(default=None),
     image: UploadFile | None = File(default=None),
+    user_id: str | None = Form(None),
+    video_id: str | None = Form(None),
 ):
 
     
@@ -180,7 +200,17 @@ async def create_video(
 
 
     pipeline_start = time.time()
-    video_id = generate_video_id()
+    # Use provided video_id or generate a new one
+    if not video_id:
+        video_id = generate_video_id()
+
+    # Ensure user + session + video record in DB
+    try:
+        uid = await db.ensure_user(user_id)
+        session_id = await db.create_session(uid, video_id, status="processing", metadata={"topic": topic, "video_type": video_type})
+        await db.create_video_record(video_id, session_id, path=None, state="processing")
+    except Exception as e:
+        logger.warning(f"DB record creation failed: {e}")
 
     logger.info(
         f"Starting Remotion pipeline - Video ID: {video_id}",
@@ -249,6 +279,12 @@ async def create_video(
 
         final_path = render_remotion(video_id)
 
+        # Update DB record to complete
+        try:
+            await db.update_video_state(video_id, state="complete", path=str(final_path))
+        except Exception as e:
+            logger.warning(f"DB update failed: {e}")
+
         total_time = time.time() - pipeline_start
 
         return {
@@ -273,9 +309,11 @@ async def create_video(
 
 
 @app.post("/create-moa")
-def create_moa_video(body: CreateMoARequest):
+async def create_moa_video(body: CreateMoARequest, user_id: str | None = None, video_id: str | None = None):
     pipeline_start = time.time()
-    video_id = generate_video_id()
+    # Use provided video_id or generate a new one
+    if not video_id:
+        video_id = generate_video_id()
 
     logger.info(
         f"Starting MoA pipeline - Video ID: {video_id}",
@@ -283,6 +321,14 @@ def create_moa_video(body: CreateMoARequest):
     )
 
     try:
+        # create user/session/video tracking
+        try:
+            uid = await db.ensure_user(user_id)
+            session_id = await db.create_session(uid, video_id, status="processing", metadata={"drug_name": body.drug_name, "condition": body.condition})
+            await db.create_video_record(video_id, session_id, path=None, state="processing")
+        except Exception as e:
+            logger.warning(f"DB record creation failed: {e}")
+
         stage_logger = StageLogger("MoA Scene Planning")
         stage_logger.start()
 
@@ -337,6 +383,11 @@ def create_moa_video(body: CreateMoARequest):
             quality=body.quality,
         )
 
+        try:
+            await db.update_video_state(video_id, state="complete", path=str(final_path))
+        except Exception as e:
+            logger.warning(f"DB update failed: {e}")
+
         total_time = time.time() - pipeline_start
 
         return {
@@ -372,10 +423,29 @@ async def get_video(video_id: str, request: Request):
     return FileResponse(video_path, media_type="video/mp4")
 
 
+@app.get("/generate-uuid")
+def generate_uuid():
+    """Generate UUIDs for a video session (user_id and video_id)."""
+    user_id = str(uuid.uuid4())
+    video_id = generate_video_id()
+    return {
+        "user_id": user_id,
+        "video_id": video_id,
+        "message": "Pass both user_id and video_id to /create or /create-moa endpoints"
+    }
+
+
 @app.get("/")
 def root():
     return {
         "service": "Pharma Video Generator",
+        "endpoints": {
+            "generate_uuid": {
+                "method": "GET",
+                "path": "/generate-uuid",
+                "description": "Generate a new UUID for tracking a video session"
+            }
+        },
         "pipelines": {
             "pexels_remotion": {
                 "endpoint": "/create",
