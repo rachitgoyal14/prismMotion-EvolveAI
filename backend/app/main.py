@@ -45,9 +45,9 @@ from app.stages.stage4_tts import tts_generate
 from app.stages.stage5_render import render_remotion
 
 # MoA / Manim pipeline
-from app.stages.stage1_moa_scenes import generate_moa_scenes
-from app.stages.stage2_moa_manim import run_stage2_moa
-from app.stages.stage5_moa_render import render_moa_video
+from backend.app.moa_stages.stage1_moa_scenes import generate_moa_scenes
+from backend.app.moa_stages.stage2_moa_manim import run_stage2_moa
+from backend.app.moa_stages.stage5_moa_render import render_moa_video
 
 from app.paths import OUTPUTS_DIR
 from app import db
