@@ -10,11 +10,49 @@ from app.utils.llm import call_llm
 from app.utils.pexels_client import get_media_for_scene
 from app.utils.pexels_client import download_media
 from app.utils.media_validator import validate_scene_media, validate_media_aspect_ratio
-
+import shutil
 import logging
 logger = logging.getLogger(__name__)
 
 VIDEOS_DIR = OUTPUTS_DIR / "videos"
+
+def copy_uploaded_assets_to_remotion(video_id: str, assets: dict | None):
+    """
+    Copy uploaded assets into Remotion public folder
+    so staticFile() can access them.
+    """
+    if not assets:
+        return {"logos": [], "images": []}
+
+    src_base = VIDEOS_DIR / video_id / "assets"
+    dest_base = REMOTION_DIR / "public" / "assets" / video_id
+
+    dest_base.mkdir(parents=True, exist_ok=True)
+
+    result = {"logos": [], "images": []}
+
+    for category in ["logos", "images"]:
+        src_dir = src_base / category
+        dest_dir = dest_base / category
+
+        if not src_dir.exists():
+            continue
+
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+        for file in src_dir.iterdir():
+            dest_file = dest_dir / file.name
+            shutil.copy2(file, dest_file)
+
+
+            # Path relative to remotion/public
+            result[category].append(
+                f"assets/{video_id}/{category}/{file.name}"
+            )
+
+    logger.info(f"Copied uploaded assets to Remotion public: {result}")
+    return result
+
 
 def enrich_scenes_with_media(scenes_data: dict, video_id: str) -> dict:
     """
@@ -210,19 +248,36 @@ def generate_remotion_tsx(scenes_with_media: dict, script_per_scene: list[dict])
     data = extract_json(output)
     return data.get("tsx_code", "").strip()
 
-def run_stage2(scenes_data: dict, script: list[dict], video_id: str) -> str:
+def run_stage2(
+    scenes_data: dict,
+    script: list[dict],
+    video_id: str,
+    assets: dict | None = None
+) -> str:
     """
-    Enrich scenes with Pexels media and persist JSON outputs for downstream stages.
+    Enrich scenes with Pexels media + uploaded assets.
+    """
 
-    Note: We intentionally do NOT overwrite `remotion/src/PharmaVideo.tsx` here.
-    Using an LLM-generated TSX proved brittle (black frames, props mismatches, missing audio).
-    Keep the Remotion composition stable and drive it via props + JSON instead.
-    """
+    # 1. Copy uploaded assets into Remotion
+    remotion_assets = copy_uploaded_assets_to_remotion(video_id, assets)
+
+    # 2. Enrich scenes with Pexels media
     enriched = enrich_scenes_with_media(scenes_data, video_id)
-    out_path = REMOTION_DIR / "src" / "PharmaVideo.tsx"
-    # Also persist enriched scenes + script for render stage
+
+    # 3. Attach branding assets globally
+    enriched["branding"] = {
+        "logos": remotion_assets.get("logos", []),
+        "images": remotion_assets.get("images", []),
+    }
+
+    # 4. Persist JSON for Remotion render stage
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+
     (OUTPUTS_DIR / "scenes_with_media.json").write_text(
-        json.dumps(enriched, indent=2), encoding="utf-8"
+        json.dumps(enriched, indent=2),
+        encoding="utf-8",
     )
+
+    out_path = REMOTION_DIR / "src" / "PharmaVideo.tsx"
+
     return str(out_path)

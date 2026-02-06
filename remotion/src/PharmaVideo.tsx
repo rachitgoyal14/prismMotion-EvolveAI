@@ -51,6 +51,7 @@ export type Scene = {
 
 export type PharmaVideoProps = {
   scenes: Scene[];
+  branding?: BrandingAssets;
 };
 
 /* ------------------ Metadata (SINGLE source of truth) ------------------ */
@@ -71,6 +72,12 @@ export const calculateMetadata = ({ props }: { props: PharmaVideoProps }) => {
     durationInFrames: sceneFrames + creditFrames,
   };
 };
+/* ------------------ Branding Types ------------------ */
+export type BrandingAssets = {
+  logos?: string[];
+  images?: string[];
+};
+
 
 /* ------------------ Helper to determine if path is local or remote ------------------ */
 const isLocalPath = (src: string): boolean => {
@@ -205,9 +212,10 @@ const getExitStyle = (
 };
 
 /* Scene visual with animation support */
-const SceneVisual: React.FC<{ scene: Scene; durationFrames: number }> = ({
+const SceneVisual: React.FC<{ scene: Scene; durationFrames: number;logoSrc?: string|null}> = ({
   scene,
   durationFrames,
+  logoSrc
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -362,15 +370,21 @@ const TransitionOverlay: React.FC<{
       overlayStyle.opacity = easeProgress;
       break;
   }
+  
 
   return <AbsoluteFill style={overlayStyle} />;
 };
 
 /* ------------------ Main Composition with transition support ------------------ */
-export const PharmaVideo: React.FC<PharmaVideoProps> = ({ scenes }) => {
+export const PharmaVideo: React.FC<PharmaVideoProps> = ({ scenes ,branding}) => {
   const { fps } = useVideoConfig();
 
   let from = 0;
+  const logoSrc =
+  branding?.logos && branding.logos.length > 0
+    ? branding.logos[0]
+    : null;
+
 
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
@@ -392,7 +406,7 @@ export const PharmaVideo: React.FC<PharmaVideoProps> = ({ scenes }) => {
               from={start}
               durationInFrames={durationFrames}
             >
-              <SceneVisual scene={scene} durationFrames={durationFrames} />
+              <SceneVisual scene={scene} durationFrames={durationFrames}  logoSrc={logoSrc}/>
             </Sequence>
 
             {/* Render transition overlay if needed */}
@@ -423,6 +437,21 @@ export const PharmaVideo: React.FC<PharmaVideoProps> = ({ scenes }) => {
           </span>
         </AbsoluteFill>
       </Sequence>
+      {logoSrc && (
+  <Img
+    src={staticFile(logoSrc)}
+    style={{
+      position: "absolute",
+      top: 40,
+      right: 40,
+      width: 140,
+      opacity: 0.9,
+      pointerEvents: "none",
+      zIndex: 9999
+    }}
+  />
+)}
+
     </AbsoluteFill>
   );
 };
