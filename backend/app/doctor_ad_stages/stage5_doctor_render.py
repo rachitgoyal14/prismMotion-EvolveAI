@@ -74,6 +74,23 @@ Return ONLY JSON: {{"manim_code": "<fixed code>"}}"""
         raise ValueError(f"LLM fix failed: {e}")
 
 
+def get_duration(file_path: Path) -> float:
+    """Get duration of audio or video file in seconds using ffprobe."""
+    cmd = [
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        str(file_path)
+    ]
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=10)
+        return float(result.stdout.strip())
+    except Exception as e:
+        logger.warning(f"Could not get duration for {file_path}: {e}")
+        return 0.0
+
+
 def render_manim_scene(scene_file: Path, output_dir: Path, scene_data: dict, quality: str = "high", max_retries: int = 2) -> Path:
     """Render single Manim scene with retry on error."""
     quality_flags = {"low": "-ql", "medium": "-qm", "high": "-qh", "production": "-qk"}
@@ -126,22 +143,61 @@ def render_manim_scene(scene_file: Path, output_dir: Path, scene_data: dict, qua
 
 
 def combine_video_audio(video_path: Path, audio_path: Path, output_path: Path):
-    """Combine video with audio."""
-    cmd = [
-        "ffmpeg",
-        "-i", str(video_path),
-        "-i", str(audio_path),
-        "-c:v", "copy",
-        "-c:a", "aac",
-        "-shortest",
-        "-y",
-        str(output_path)
-    ]
+    """
+    Combine video with audio using ffmpeg.
+    
+    Duration handling:
+    - Audio > Video: Freeze last video frame until audio completes
+    - Video > Audio: Pad audio with silence to match video length
+    """
+    video_duration = get_duration(video_path)
+    audio_duration = get_duration(audio_path)
+    
+    logger.info(f"Combining: video={video_duration:.1f}s, audio={audio_duration:.1f}s")
+    
+    # Use max duration as target
+    max_duration = max(video_duration, audio_duration)
+    
+    if max_duration == 0:
+        # Fallback if duration detection fails
+        logger.warning("Could not determine durations, using basic combine")
+        cmd = [
+            "ffmpeg",
+            "-i", str(video_path),
+            "-i", str(audio_path),
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-shortest",
+            "-y",
+            str(output_path)
+        ]
+    else:
+        # Smart duration matching
+        cmd = [
+            "ffmpeg",
+            "-i", str(video_path),
+            "-i", str(audio_path),
+            "-filter_complex",
+            f"[0:v]tpad=stop_mode=clone:stop_duration={max(0, audio_duration - video_duration)}[v];"
+            f"[1:a]apad=whole_dur={max_duration}[a]",
+            "-map", "[v]",
+            "-map", "[a]",
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-crf", "23",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-t", str(max_duration),
+            "-y",
+            str(output_path)
+        ]
     
     try:
-        subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=60)
+        subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=180)
+        result_duration = get_duration(output_path)
+        logger.info(f"Combined video duration: {result_duration:.1f}s")
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"FFmpeg audio combine failed: {e.stderr[:200]}")
+        raise RuntimeError(f"FFmpeg audio combine failed: {e.stderr[:300]}")
 
 
 def concatenate_videos(video_paths: list[Path], output_path: Path):

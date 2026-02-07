@@ -4,6 +4,8 @@ Provides colored output and progress tracking.
 """
 import logging
 import sys
+import os
+from pathlib import Path
 from datetime import datetime
 
 class ColoredFormatter(logging.Formatter):
@@ -77,6 +79,18 @@ def setup_logging(level=logging.INFO):
     
     # Add handler to logger
     logger.addHandler(console_handler)
+    # Also write logs to a file for later inspection (no ANSI colors)
+    try:
+        logs_dir = Path(__file__).resolve().parent / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(logs_dir / "app.log", encoding="utf-8")
+        file_handler.setLevel(level)
+        file_formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s')
+        file_handler.setFormatter(file_formatter)
+        logger.addHandler(file_handler)
+    except Exception:
+        # If file logging fails, continue with console only
+        pass
     
     # Reduce noise from external libraries
     logging.getLogger("urllib3").setLevel(logging.WARNING)

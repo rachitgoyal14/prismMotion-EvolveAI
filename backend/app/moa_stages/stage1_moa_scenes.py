@@ -6,6 +6,7 @@ from pathlib import Path
 from app.utils.llm import call_llm
 from app.utils.json_safe import extract_json
 from app.paths import PROMPTS_DIR
+import logging
 
 
 def generate_moa_scenes(
@@ -54,7 +55,23 @@ def generate_moa_scenes(
         prompt += f"\n\nREFERENCE_DOCS: {reference_docs[:6000]}"
     
     output = call_llm(prompt)
-    scenes_data = extract_json(output)
+    logger = logging.getLogger(__name__)
+    preview = (output[:2000] + '...') if output and len(output) > 2000 else (output or '<empty>')
+    logger.info(f"LLM output preview (first 2000 chars):\n{preview}")
+    # Attempt to parse JSON returned by the LLM. If parsing fails, log the
+    # raw output (truncated) to help debugging unpredictable LLM responses.
+    try:
+        scenes_data = extract_json(output)
+        # Log parsed keys for quick insight
+        if isinstance(scenes_data, dict):
+            logger.info(f"Parsed LLM JSON keys: {list(scenes_data.keys())}")
+        else:
+            logger.info(f"Parsed LLM JSON type: {type(scenes_data)}, repr: {repr(scenes_data)[:200]}")
+    except Exception as e:
+        # Log a truncated version of the LLM output for debugging
+        preview = output[:2000] if output else "<empty>"
+        logger.error(f"Failed to parse LLM output for MoA scenes: {e}\n---LLM output preview---\n{preview}\n---END PREVIEW---")
+        raise ValueError(f"LLM returned unparsable JSON for MoA scenes: {e}")
     
     # Ensure required fields
     if "scenes" not in scenes_data:

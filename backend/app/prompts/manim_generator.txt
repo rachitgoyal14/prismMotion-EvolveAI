@@ -5,21 +5,68 @@ Generate Manim code for a Mechanism of Action scene with these specifications:
 Scene Details:
 {scene_json}
 
+**CRITICAL LAYOUT RULES (NO OVERLAPPING, ALL ON SCREEN):**
+
+1. **FRAME SAFE ZONES - Use these positioning rules:**
+   - Top safe zone: UP * 3 to UP * 2.5 (for titles)
+   - Upper-middle zone: UP * 2 to UP * 0.5 (for subtitles/descriptions)
+   - Center zone: UP * 0.5 to DOWN * 0.5 (for main content)
+   - Lower-middle zone: DOWN * 0.5 to DOWN * 2 (for captions)
+   - Bottom safe zone: DOWN * 2 to DOWN * 3 (for background images)
+
+2. **PREVENT OVERLAPPING:**
+   - Always check if elements will overlap BEFORE positioning
+   - Use `.get_top()`, `.get_bottom()`, `.get_left()`, `.get_right()` to get boundaries
+   - Position new elements relative to existing ones using `.next_to()` with appropriaate buff (0.3-0.5)
+   - Keep minimum 0.3 units buffer between all elements
+   - Group related elements in VGroup and position the group as one unit
+
+3. **KEEP EVERYTHING ON SCREEN:**
+   - Maximum text width: `config.frame_width * 0.85` (leave 15% margins)
+   - Maximum element height: `config.frame_height * 0.25` per element
+   - Always use `.move_to()` or `.to_edge()` with buff parameter
+   - Check bounds: Element center should be within [-6.5, 6.5] horizontally, [-3.5, 3.5] vertically
+   - For text, set `width=config.frame_width * 0.8` to auto-wrap and prevent overflow
+
+4. **POSITIONING TEMPLATE:**
+```python
+# Title (top safe zone)
+title = Text("Title", font="Sans", font_size=44, color=BLACK)
+title.to_edge(UP, buff=0.5)  # Keeps it on screen with 0.5 buffer
+
+# Subtitle (below title, no overlap)
+subtitle = Text("Subtitle", font="Sans", font_size=32, color=BLACK)
+subtitle.next_to(title, DOWN, buff=0.4)  # 0.4 buffer prevents overlap
+
+# Main content (center zone, check width)
+content = Text("Content...", font="Sans", font_size=28, color=BLACK)
+if content.width > config.frame_width * 0.85:
+    content.width = config.frame_width * 0.85  # Prevent overflow
+content.next_to(subtitle, DOWN, buff=0.5)
+
+# Background image (bottom safe zone, won't overlap with text above)
+bg_image.height = config.frame_height * 0.35
+bg_image.to_edge(DOWN, buff=0)  # Anchored at bottom
+```
+
 **IMAGE HANDLING (CRITICAL FOR PEXELS IMAGES):**
 If the scene includes "pexels_image_path", follow these EXACT steps to avoid crashes:
 
-1. **Load image with error handling:**
+1. **Load image with error handling and safe sizing:**
 ```python
 try:
     bg_image = ImageMobject("{pexels_image_path}")
-    bg_image.height = config.frame_height * 0.4  # Use 40% of frame height (NEVER use scale_to_fit_width)
-    bg_image.set_opacity(0.6)  # Make semi-transparent for background
-    bg_image.to_edge(DOWN, buff=0)  # Position at bottom
+    # Use 35% of frame height MAX to leave room for text
+    bg_image.height = config.frame_height * 0.35  
+    bg_image.set_opacity(0.6)
+    bg_image.to_edge(DOWN, buff=0)  # Anchor to bottom edge
+    # Verify it's on screen
+    if bg_image.get_top()[1] > -1.5:  # If image extends too high
+        bg_image.height = config.frame_height * 0.25  # Make smaller
 except Exception as e:
-    # Fallback: colored rectangle if image fails
     bg_image = Rectangle(
         width=config.frame_width,
-        height=config.frame_height * 0.4,
+        height=config.frame_height * 0.35,
         fill_color=BLUE_E,
         fill_opacity=0.2,
         stroke_width=0
@@ -75,7 +122,7 @@ Custom Shapes (IMPORTANT):
 - For checkmarks, crosses, or custom paths: Use VMobject with set_points_as_corners()
 - DO NOT use SVGMobject with path_string (it doesn't exist in Manim)
 - Example checkmark:
-  ```python
+```python
   checkmark = VMobject()
   checkmark.set_points_as_corners([
       LEFT + DOWN * 0.5,
@@ -83,7 +130,7 @@ Custom Shapes (IMPORTANT):
       RIGHT * 1.5 + UP
   ])
   checkmark.set_stroke(color=GREEN, width=8)
-  ```
+```
 - For simple symbols, use Polygon or combine basic shapes
 
 Manim Best Practices:
@@ -95,7 +142,7 @@ Manim Best Practices:
 - Use self.camera.background_color = WHITE (not config.background_color)
 - For text colors on white background, use BLACK or dark colors
 
-CORRECT Example WITH IMAGE:
+CORRECT Example WITH IMAGE AND NO OVERLAPPING:
 ```python
 from manim import *
 from manim import config
@@ -109,16 +156,16 @@ class Scene{scene_id}(Scene):
         medical_blue = "#2E86AB"
         medical_red = "#A23B72"
         
-        # Load background image SAFELY
+        # Load background image SAFELY (bottom zone)
         try:
             bg_image = ImageMobject("/path/to/image.jpg")
-            bg_image.height = config.frame_height * 0.4  # NEVER use scale_to_fit_width
+            bg_image.height = config.frame_height * 0.35  # 35% max
             bg_image.set_opacity(0.6)
             bg_image.to_edge(DOWN, buff=0)
         except Exception as e:
             bg_image = Rectangle(
                 width=config.frame_width,
-                height=config.frame_height * 0.4,
+                height=config.frame_height * 0.35,
                 fill_color=BLUE_E,
                 fill_opacity=0.2,
                 stroke_width=0
@@ -128,17 +175,28 @@ class Scene{scene_id}(Scene):
         self.add(bg_image)
         self.play(bg_image.animate.set_opacity(0.7), run_time=1)
         
-        # Create text overlays
-        title = Text("Medical Title", font="Sans", font_size=48, color=BLACK)
-        title.to_edge(UP, buff=0.5)
+        # Title (top safe zone - no overlap with image)
+        title = Text("Medical Title", font="Sans", font_size=44, color=BLACK)
+        title.to_edge(UP, buff=0.5)  # Safe distance from top edge
         
-        # Animate
+        # Description (below title with buffer)
+        description = Text("Description text here", font="Sans", font_size=32, color=BLACK)
+        description.next_to(title, DOWN, buff=0.4)  # 0.4 buffer prevents overlap
+        
+        # Ensure description width doesn't overflow
+        if description.width > config.frame_width * 0.85:
+            description.width = config.frame_width * 0.85
+        
+        # Animate (everything is in its own space)
         self.play(Write(title))
+        self.wait(0.5)
+        self.play(Write(description))
         self.wait(2)
         
         # Fade out separately
         self.play(
             FadeOut(title),
+            FadeOut(description),
             FadeOut(bg_image),
             run_time=1
         )
@@ -147,20 +205,22 @@ class Scene{scene_id}(Scene):
 
 WRONG - DO NOT DO THIS:
 ```python
-# ❌ Using scale_to_fit_width (causes crashes)
-bg_image.scale_to_fit_width(config.frame_width)
+# ❌ Elements will overlap
+title.move_to(ORIGIN)
+subtitle.move_to(ORIGIN)  # Same position!
 
-# ❌ FadeIn directly on ImageMobject (can hang)
-self.play(FadeIn(bg_image))
+# ❌ Text might overflow screen
+long_text = Text("Very long text...", font_size=48)  # No width constraint
 
-# ❌ Nested VGroups with ImageMobject
-self.play(FadeOut(VGroup(text, VGroup(bg_image))))
+# ❌ Image too large, overlaps with text
+bg_image.height = config.frame_height * 0.8  # Takes 80% of screen!
 
 # ✅ CORRECT ways:
-bg_image.height = config.frame_height * 0.4  # Use .height instead
-self.add(bg_image)  # Add first
-self.play(bg_image.animate.set_opacity(0.7))  # Then animate opacity
-self.play(FadeOut(bg_image))  # Fade separately, not nested
+title.to_edge(UP, buff=0.5)
+subtitle.next_to(title, DOWN, buff=0.4)  # Positioned relative to title
+if long_text.width > config.frame_width * 0.85:
+    long_text.width = config.frame_width * 0.85  # Constrain width
+bg_image.height = config.frame_height * 0.35  # Leaves 65% for other content
 ```
 
 Generate COMPLETE, WORKING Manim code for this scene. 
@@ -171,6 +231,11 @@ VALIDATION CHECKLIST BEFORE RETURNING:
 ✓ Class name is Scene{scene_id}
 ✓ Uses self.camera.background_color = WHITE
 ✓ All text uses color=BLACK (for white background)
+✓ All text has width constraint: `if element.width > config.frame_width * 0.85: element.width = config.frame_width * 0.85`
+✓ All elements positioned with buff parameter or .next_to() to prevent overlap
+✓ Background image height ≤ 35% of frame_height
+✓ Elements use safe zones (top for titles, bottom for images, center for content)
+✓ Minimum 0.3 units buffer between adjacent elements
 ✓ If pexels_image_path exists: Uses try/except, .height (not scale_to_fit_width), self.add() then animate opacity
 ✓ No nested VGroups around ImageMobject in FadeOut
 ✓ All animations use self.play() or self.wait()
@@ -179,5 +244,5 @@ VALIDATION CHECKLIST BEFORE RETURNING:
 Return ONLY valid JSON:
 {{
   "scene_id": {scene_id},
-  "manim_code": "from manim import *\nfrom manim import config\n\nclass Scene{scene_id}(Scene):\n    def construct(self):\n        self.camera.background_color = WHITE\n        ..."
+  "manim_code": "from manim import *\\\\nfrom manim import config\\\\n\\\\nclass Scene{scene_id}(Scene):\\\\n    def construct(self):\\\\n        self.camera.background_color = WHITE\\\\n        ..."
 }}

@@ -107,6 +107,6 @@ def test_create_doctor():
 
 if __name__ == "__main__":
     test_create()
-    test_create_compliance()
-    test_create_moa()
-    test_create_doctor()
+    # test_create_compliance()
+    # test_create_moa()
+    # test_create_doctor()

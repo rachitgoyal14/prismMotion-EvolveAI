@@ -15,6 +15,7 @@ import subprocess
 import requests
 import base64
 import tempfile
+from typing import Union
 
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
@@ -23,8 +24,8 @@ from fastapi import (
     FastAPI,
     HTTPException,
     Request,
-    UploadFile,
     File,
+    UploadFile,
     Form,
     Depends
 )
@@ -108,7 +109,7 @@ class CreateMoARequest(BaseModel):
     target_audience: str = "healthcare professionals"
     persona: str = "professional medical narrator"
     tone: str = "clear and educational"
-    quality: str = "high"
+    quality: str = "low"
 
 class CreateComplianceRequest(BaseModel):
     """Compliance video using Remotion with strict adherence to reference documents"""
@@ -127,7 +128,7 @@ class CreateDoctorRequest(BaseModel):
     pexels_query: str = "doctor consultation"
     persona: str = "professional medical narrator"
     tone: str = "scientific and professional"
-    quality: str = "high"
+    quality: str = "low"
 
 
 class CreateSocialMediaRequest(BaseModel):
@@ -138,7 +139,7 @@ class CreateSocialMediaRequest(BaseModel):
     target_audience: str = "patients"
     persona: str = "friendly health narrator"
     tone: str = "engaging and conversational"
-    quality: str = "high"
+    quality: str = "low"
 
 
 class CreateSocialMediaRemotionRequest(BaseModel):
@@ -183,13 +184,73 @@ ALLOWED_TYPES = {
     "image/webp",
 }
 
-def filter_valid_files(files: list[UploadFile]) -> list[UploadFile]:
-    """Filter out invalid files (no filename or no content_type)"""
-    return [
-        f for f in files 
-        if f.filename and f.content_type and f.content_type in ALLOWED_TYPES
-    ]
+ALLOWED_DOC_TYPES = {
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # .docx
+    "text/plain",
+}
 
+
+def filter_valid_files(
+    files: list[Union[UploadFile, str]] | None,
+    allowed_types: set = None
+) -> list:
+    """Filter out invalid items and return only valid `UploadFile` objects."""
+    if allowed_types is None:
+        allowed_types = ALLOWED_TYPES
+    
+    # Define document extensions for fallback validation
+    DOC_EXTENSIONS = {'.pdf', '.docx', '.doc', '.txt'}
+    is_doc_filter = allowed_types == ALLOWED_DOC_TYPES
+    
+    valid = []
+    
+    if not files or not isinstance(files, list):
+        return valid
+    
+    logger.info(f"filter_valid_files: Processing {len(files)} items")
+    
+    for i, f in enumerate(files):
+        # Skip strings
+        if isinstance(f, str):
+            logger.info(f"  [{i}] -> Skipping: is a string")
+            continue
+        
+        # ✅ Check if it has the UploadFile interface (duck typing)
+        # This works for both fastapi.UploadFile and starlette.datastructures.UploadFile
+        if not hasattr(f, 'filename') or not hasattr(f, 'content_type') or not hasattr(f, 'file'):
+            logger.info(f"  [{i}] -> Skipping: not an UploadFile-like object")
+            continue
+        
+        logger.info(f"  [{i}] -> Is UploadFile-like object")
+        logger.info(f"  [{i}]    filename: {f.filename}")
+        logger.info(f"  [{i}]    content_type: {f.content_type}")
+            
+        if not f.filename:
+            logger.warning(f"  [{i}] -> REJECTED: filename is empty")
+            continue
+        
+        # PRIMARY: Check content_type
+        is_valid_by_type = f.content_type and f.content_type in allowed_types
+        
+        # FALLBACK: For documents, also check file extension
+        is_valid_by_ext = False
+        if is_doc_filter and f.filename:
+            file_ext = Path(f.filename).suffix.lower()
+            is_valid_by_ext = file_ext in DOC_EXTENSIONS
+            logger.info(f"  [{i}]    file extension: {file_ext}, valid: {is_valid_by_ext}")
+        
+        logger.info(f"  [{i}]    valid by content_type: {is_valid_by_type}")
+        logger.info(f"  [{i}]    valid by extension: {is_valid_by_ext}")
+        
+        if is_valid_by_type or is_valid_by_ext:
+            logger.info(f"  [{i}] ✓ ACCEPTED: {f.filename}")
+            valid.append(f)
+        else:
+            logger.warning(f"  [{i}] ✗ REJECTED: {f.filename}, content_type={f.content_type}")
+    
+    logger.info(f"filter_valid_files: Returning {len(valid)}/{len(files)} valid files")
+    return valid
 
 def _call_sadtalker_service(audio_path: str, image_path: Optional[str], sadtalker_url: str) -> str:
     """
@@ -330,19 +391,45 @@ async def create_video(
     tone: str = Form("clear and reassuring"),
     logo: Optional[UploadFile] = File(None),
     image: Optional[UploadFile] = File(None),
-    documents: list[UploadFile] = File(default=[]),
+    documents: list[Union[UploadFile, str]] = File(default=[]),
     user_id: Optional[str] = Form(None),
 ):
     pipeline_start = time.time()
     video_id = generate_video_id()
-
-    # ✅ FILTER FILES FIRST - BULLETPROOF
+    
+    # ✅ DEBUG: Log raw input
+    logger.info(f"=== DOCUMENT UPLOAD DEBUG ===")
+    logger.info(f"documents parameter type: {type(documents)}")
+    logger.info(f"documents parameter length: {len(documents) if documents else 0}")
+    if documents:
+        for i, doc in enumerate(documents):
+            if isinstance(doc, str):
+                logger.info(f"  documents[{i}]: STRING = '{doc}'")
+            elif isinstance(doc, UploadFile):
+                logger.info(f"  documents[{i}]: UploadFile(filename={doc.filename}, content_type={doc.content_type})")
+            else:
+                logger.info(f"  documents[{i}]: {type(doc)}")
+    
+    # ✅ FILTER FILES WITH CORRECT TYPES
     logos = [logo] if logo and logo.filename and logo.content_type else []
-    images = [image] if image and image.filename and logo.content_type else []
-    valid_docs = [doc for doc in documents if doc.filename and doc.content_type]
+    images = [image] if image and image.filename and image.content_type else []
+    
+    logger.info(f"Calling filter_valid_files with ALLOWED_DOC_TYPES={ALLOWED_DOC_TYPES}")
+    valid_docs = filter_valid_files(documents, allowed_types=ALLOWED_DOC_TYPES)
     
     logger.info(f"Valid logos: {len(logos)}, images: {len(images)}, docs: {len(valid_docs)}")
-
+    
+    # ✅ DEBUG: Verify document extraction
+    if valid_docs:
+        logger.info(f"Valid documents: {[d.filename for d in valid_docs]}")
+        reference_text = extract_documents_text(valid_docs)
+        logger.info(f"Extracted reference text: {len(reference_text)} characters")
+        if reference_text:
+            logger.info(f"First 300 chars of reference text: {reference_text[:300]}...")
+    else:
+        logger.info("No valid documents found after filtering")
+        reference_text = ""
+    
     # DB setup
     try:
         uid = await db.ensure_user(user_id)
@@ -370,25 +457,26 @@ async def create_video(
     logger.info(f"Saved {len(logo_paths)} logos and {len(image_paths)} images")
 
     try:
-        # Stage 1 - USE valid_docs
+        # Stage 1 - USE reference_text (not valid_docs directly)
         scenes_data = generate_scenes(
             topic=topic,
             video_type=video_type,
             brand_name=brand_name or "Our Brand",
-            reference_docs=extract_documents_text(valid_docs) if valid_docs else "",
+            reference_docs=reference_text,  # ✅ Use extracted text, not the file list
         )
 
         scenes = scenes_data.get("scenes", [])
         if not scenes:
             raise HTTPException(500, "No scenes generated")
 
-        # Script - USE valid_docs
+        # Script - USE reference_text
         script = generate_script(
             scenes,
             persona=persona,
             tone=tone,
-            reference_docs=extract_documents_text(valid_docs) if valid_docs else None,
+            reference_docs=reference_text if reference_text else None,  # ✅ Use extracted text
         )
+
 
         # Stage 2
         run_stage2(
@@ -435,14 +523,13 @@ async def create_compliance_video(
     persona: str = Form("compliance officer"),
     tone: str = Form("formal and precise"),
     user_id: Optional[str] = Form(None),
-    documents: list[UploadFile] = File(default=[]),
+    documents: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
     logo: Optional[UploadFile] = File(None),
-    images: list[UploadFile] = File(default=[]),
+    images: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
 ):
-    # ✅ FILTER FILES FIRST
-    valid_docs = filter_valid_files(documents)
+    valid_docs = filter_valid_files(documents, allowed_types=ALLOWED_DOC_TYPES)
     valid_logo = logo if logo and logo.filename and logo.content_type else None
-    valid_images = filter_valid_files(images)
+    valid_images = filter_valid_files(images, allowed_types=ALLOWED_TYPES)
     
     logger.info(f"Compliance: {len(valid_docs)} docs, logo: {valid_logo is not None}, {len(valid_images)} images")
 
@@ -470,75 +557,36 @@ async def create_moa_video(
     target_audience: str = Form("healthcare professionals"),
     persona: str = Form("professional medical narrator"),
     tone: str = Form("clear and educational"),
-    quality: str = Form("high"),
+    quality: str = Form("low"),
     user_id: Optional[str] = Form(None),
-    documents: list[UploadFile] = File(default=[]),
+    documents: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
     logo: Optional[UploadFile] = File(None),
-    images: list[UploadFile] = File(default=[]),
+    images: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
 ):
     pipeline_start = time.time()
     video_id = generate_video_id()
 
-    # ✅ FILTER FILES FIRST
-    valid_docs = filter_valid_files(documents)
+    valid_docs = filter_valid_files(documents, allowed_types=ALLOWED_DOC_TYPES)
     valid_logo = logo if logo and logo.filename and logo.content_type else None
-    valid_images = filter_valid_files(images)
+    valid_images = filter_valid_files(images, allowed_types=ALLOWED_TYPES)
 
     logger.info(f"MoA: {len(valid_docs)} docs, logo: {valid_logo is not None}, {len(valid_images)} images")
 
-    try:
-        uid = await db.ensure_user(user_id)
-        session_id = await db.create_session(
-            uid, video_id, status="processing", 
-            metadata={"drug_name": drug_name, "condition": condition}
-        )
-        await db.create_video_record(video_id, session_id, path=None, state="processing")
-    except Exception as e:
-        logger.warning(f"DB record creation failed: {e}")
-
-        stage_logger = StageLogger("MoA Scene Planning")
-        stage_logger.start()
-
-        scenes_data = generate_moa_scenes(
-            drug_name=drug_name,
-            condition=condition,
-            target_audience=target_audience,
-            reference_docs=extract_documents_text(valid_docs) if valid_docs else None,
-            logo_path=valid_logo.filename if valid_logo else None,
-            image_paths=[img.filename for img in valid_images],
-        )
-
-        scenes = scenes_data.get("scenes", [])
-        stage_logger.complete(f"{len(scenes)} MoA scenes planned")
-
-        if not scenes:
-            raise HTTPException(500, "No MoA scenes generated")
-
-        stage_logger = StageLogger("Script Writing")
-        stage_logger.start()
-
-        script = generate_script(scenes, persona=persona, tone=tone)
-        stage_logger.complete(f"{len(script)} scripts generated")
-
-        run_stage2_moa(scenes_data, script, video_id, max_workers=4)
-        scene_ids = [s["scene_id"] for s in scenes]
-        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids, max_workers=5)
-        final_path = render_moa_video(video_id, quality=quality)
-
-        await db.update_video_state(video_id, state="complete", path=str(final_path))
-        
-        total_time = time.time() - pipeline_start
-        return {
-            "status": "complete",
-            "video_id": video_id,
-            "video_type": "mechanism_of_action",
-            "video_path": str(final_path),
-            "elapsed_seconds": round(total_time, 1),
-        }
-
-    except Exception as e:
-        logger.error(f"MoA pipeline failed: {e}")
-        raise HTTPException(500, f"MoA render failed: {e}")
+    return await create_doctor_video(
+        drug_name=drug_name,
+        indication=condition,  # Map condition → indication
+        moa_summary="",  # MoA videos don't need separate summary
+        clinical_data="",
+        pexels_query="",  # MoA doesn't use Pexels by default
+        persona=persona,
+        tone=tone,
+        quality=quality,
+        user_id=user_id,
+        video_id=None,
+        documents=documents,
+        logo=logo,
+        images=images,
+    )
 
 @app.post("/create-doctor")
 async def create_doctor_video(
@@ -549,12 +597,12 @@ async def create_doctor_video(
     pexels_query: str = Form("doctor consultation"),
     persona: str = Form("professional medical narrator"),
     tone: str = Form("scientific and professional"),
-    quality: str = Form("high"),
+    quality: str = Form("low"),
     user_id: Optional[str] = Form(None),
-    video_id: Optional[str] = Form(None),
-    documents: list[UploadFile] = File(default=[]),
+    # video_id: Optional[str] = Form(None),
+    documents: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
     logo: Optional[UploadFile] = File(None),
-    images: list[UploadFile] = File(default=[]),
+    images: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
 ):
     from app.doctor_ad_stages.stage1_doctor_scenes import generate_doctor_scenes
     from app.doctor_ad_stages.stage2_doctor_manim import run_stage2_doctor
@@ -562,13 +610,11 @@ async def create_doctor_video(
     from app.doctor_ad_stages.stage5_doctor_render import render_doctor_video
 
     pipeline_start = time.time()
-    if not video_id:
-        video_id = generate_video_id()
+    video_id = generate_video_id()
 
-    # ✅ FILTER FILES FIRST
-    valid_docs = filter_valid_files(documents)
+    valid_docs = filter_valid_files(documents, allowed_types=ALLOWED_DOC_TYPES)
     valid_logo = logo if logo and logo.filename and logo.content_type else None
-    valid_images = filter_valid_files(images)
+    valid_images = filter_valid_files(images, allowed_types=ALLOWED_TYPES)
 
     logger.info(f"Doctor ad: {len(valid_docs)} docs, logo: {valid_logo is not None}, {len(valid_images)} images")
 
