@@ -1,5 +1,12 @@
+// Root.tsx
+
 import { Composition, getInputProps } from "remotion";
-import { PharmaVideo, calculateMetadata, PharmaVideoProps } from "./PharmaVideo";
+import {
+  PharmaVideo,
+  calculateMetadata,
+  PharmaVideoProps,
+} from "./PharmaVideo";
+import { ComplianceVideo } from "./ComplianceVideo";
 
 const FPS = 30;
 const WIDTH = 1920;
@@ -21,8 +28,6 @@ const defaultScenes: PharmaVideoProps["scenes"] = [
 ];
 
 export const Root: React.FC = () => {
-  // Props passed from CLI (`--props=...`) or Remotion Studio.
-  // `getInputProps` is untyped in this Remotion version, so we narrow manually.
   const rawInput = getInputProps() as unknown;
   const inputProps = rawInput as Partial<PharmaVideoProps> | null;
 
@@ -34,16 +39,28 @@ export const Root: React.FC = () => {
       : defaultScenes;
 
   return (
-    <Composition
-      id="PharmaVideo"
-      component={PharmaVideo}
-      fps={FPS}
-      width={WIDTH}
-      height={HEIGHT}
-      defaultProps={{
-        scenes,
-      }}
-      calculateMetadata={calculateMetadata}
-    />
+    <>
+      {/* Existing marketing / pharma composition */}
+      <Composition
+        id="PharmaVideo"
+        component={PharmaVideo}
+        fps={FPS}
+        width={WIDTH}
+        height={HEIGHT}
+        defaultProps={{ scenes }}
+        calculateMetadata={calculateMetadata}
+      />
+
+      {/* NEW compliance composition - ADDED calculateMetadata */}
+      <Composition
+        id="ComplianceVideo"
+        component={ComplianceVideo}
+        fps={FPS}
+        width={WIDTH}
+        height={HEIGHT}
+        defaultProps={{ scenes }}
+        calculateMetadata={calculateMetadata}  // ← ADD THIS LINE
+      />
+    </>
   );
 };
