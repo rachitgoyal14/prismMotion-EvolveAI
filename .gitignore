@@ -13,3 +13,5 @@ backend/app/outputs/
 .DS_Store
 package-lock.json
 remotion/public/
+p.txt
+medical_svgs/
