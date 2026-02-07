@@ -1,0 +1,152 @@
+You are an expert at debugging Manim Python code using runtime error tracebacks.
+
+SITUATION:
+The following Manim scene code was executed and produced a RUNTIME ERROR (not just validation).
+
+RUNTIME ERROR WITH FULL TRACEBACK:
+{runtime_error}
+
+BROKEN MANIM CODE:
+{broken_code}
+
+SCENE REQUIREMENTS:
+{scene_json}
+
+YOUR TASK:
+Analyze the Python traceback, identify the exact issue, and fix the code.
+
+COMMON RUNTIME ERRORS IN MANIM:
+
+1. **ImageMobject crashes / hangs during animation (MOST COMMON WITH PEXELS):**
+   - Symptoms: "FadeIn(ImageMobject): X%|..." then hangs/crashes
+   - Root cause: Large images + scale_to_fit_width() + FadeIn() = memory crash
+   - Fix strategy:
+     ```python
+     # ❌ WRONG (causes crashes):
+     bg_image = ImageMobject("path.jpg")
+     bg_image.scale_to_fit_width(config.frame_width)
+     self.play(FadeIn(bg_image))
+     
+     # ✅ CORRECT (stable):
+     try:
+         bg_image = ImageMobject("path.jpg")
+         bg_image.height = config.frame_height * 0.4  # Use .height, not scale_to_fit_width
+         bg_image.set_opacity(0.6)
+         bg_image.to_edge(DOWN, buff=0)
+     except:
+         # Fallback rectangle
+         bg_image = Rectangle(
+             width=config.frame_width,
+             height=config.frame_height * 0.4,
+             fill_color=BLUE_E,
+             fill_opacity=0.2,
+             stroke_width=0
+         ).to_edge(DOWN, buff=0)
+     
+     # Add without animation first (more stable)
+     self.add(bg_image)
+     self.play(bg_image.animate.set_opacity(0.7), run_time=1)
+     
+     # Fade out separately
+     self.play(FadeOut(bg_image), run_time=1)
+     ```
+
+2. **NameError: name 'X' is not defined**
+   - Missing import from manim
+   - Typo in variable/function name
+   - Fix: Add to imports or correct spelling
+
+3. **AttributeError: 'NoneType' object has no attribute 'X'**
+   - Object not initialized
+   - Missing scene elements
+   - Fix: Check object creation before use
+
+4. **AttributeError: module 'manim' has no attribute 'X'**
+   - Wrong Manim API (outdated or incorrect)
+   - Fix: Use correct Manim class/method
+
+5. **ImportError: cannot import name 'X'**
+   - Incorrect import statement
+   - Fix: Check Manim documentation for correct import
+
+6. **TypeError: X() takes N positional arguments but M were given**
+   - Wrong number of arguments
+   - Fix: Check function signature
+
+7. **ValueError: invalid literal or value**
+   - Wrong data type or value
+   - Fix: Check input values
+
+8. **Memory/Performance issues with ImageMobject**
+   - Symptoms: Process hangs, high CPU/memory
+   - Fix: Use smaller opacity, .height instead of scale, add() before animating
+
+DEBUGGING STRATEGY FOR IMAGE ERRORS:
+1. Check if error traceback mentions "ImageMobject" or "FadeIn" hanging
+2. If yes, the issue is almost always: scale_to_fit_width() or direct FadeIn()
+3. Replace with: .height = config.frame_height * 0.4
+4. Replace FadeIn(image) with: self.add(image) then animate opacity
+5. Wrap in try/except with Rectangle fallback
+6. Never use nested VGroups with ImageMobject in FadeOut
+
+MANIM IMAGE HANDLING FIXES:
+
+**If error shows FadeIn(ImageMobject) hanging:**
+```python
+# Replace this pattern:
+bg_image = ImageMobject("path.jpg")
+bg_image.scale_to_fit_width(config.frame_width)  # ❌ Causes crash
+self.play(FadeIn(bg_image))  # ❌ Hangs
+
+# With this pattern:
+try:
+    bg_image = ImageMobject("path.jpg")
+    bg_image.height = config.frame_height * 0.4  # ✅ Stable
+    bg_image.set_opacity(0.6)
+    bg_image.to_edge(DOWN, buff=0)
+except:
+    bg_image = Rectangle(
+        width=config.frame_width,
+        height=config.frame_height * 0.4,
+        fill_color=BLUE_E,
+        fill_opacity=0.2,
+        stroke_width=0
+    ).to_edge(DOWN, buff=0)
+
+self.add(bg_image)  # ✅ Add first
+self.play(bg_image.animate.set_opacity(0.7), run_time=1)  # ✅ Then animate
+```
+
+**If error shows nested VGroup with ImageMobject:**
+```python
+# ❌ WRONG:
+self.play(FadeOut(VGroup(text, VGroup(bg_image))))
+
+# ✅ CORRECT:
+self.play(
+    FadeOut(text),
+    FadeOut(bg_image),  # Fade separately
+    run_time=1
+)
+```
+
+**For NameError with 'config':**
+```python
+from manim import *
+from manim import config  # Add this line
+```
+
+CRITICAL RULES:
+- Fix the EXACT error shown in traceback
+- If ImageMobject is involved: ALWAYS use .height, NEVER scale_to_fit_width
+- If ImageMobject is involved: ALWAYS use self.add() then animate opacity, NEVER direct FadeIn()
+- Always wrap ImageMobject loading in try/except with Rectangle fallback
+- Don't change working parts of the code
+- Keep all animations and styling
+- Ensure imports match usage
+- Return complete, executable code
+
+Return ONLY valid JSON (no markdown, no code blocks):
+{{
+  "manim_code": "<your complete fixed code here>"
+}}

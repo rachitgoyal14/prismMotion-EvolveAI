@@ -119,6 +119,18 @@ class CreateComplianceRequest(BaseModel):
     persona: str = "compliance officer"
     tone: str = "formal and precise"
 
+class CreateDoctorRequest(BaseModel):
+    """Doctor-facing HCP promotional video using Manim + Pexels."""
+    drug_name: str
+    indication: str
+    moa_summary: str = ""
+    clinical_data: str = ""
+    pexels_query: str = "doctor consultation"
+    persona: str = "professional medical narrator"
+    tone: str = "scientific and professional"
+    quality: str = "high"
+
+
 class CreateVideoForm:
     def __init__(
         self,
@@ -196,7 +208,6 @@ async def create_video(
     logo: UploadFile | None = File(default=None),
     image: UploadFile | None = File(default=None),
     user_id: str | None = Form(None),
-    video_id: str | None = Form(None),
 ):
 
     
@@ -217,9 +228,7 @@ async def create_video(
 
 
     pipeline_start = time.time()
-    # Use provided video_id or generate a new one
-    if not video_id:
-        video_id = generate_video_id()
+    video_id = generate_video_id()
 
     # Ensure user + session + video record in DB
     try:
@@ -348,11 +357,9 @@ async def create_compliance_video(
 
 
 @app.post("/create-moa")
-async def create_moa_video(body: CreateMoARequest, user_id: str | None = None, video_id: str | None = None):
+async def create_moa_video(body: CreateMoARequest, user_id: str | None = None):
     pipeline_start = time.time()
-    # Use provided video_id or generate a new one
-    if not video_id:
-        video_id = generate_video_id()
+    video_id = generate_video_id()
 
     logger.info(
         f"Starting MoA pipeline - Video ID: {video_id}",
@@ -447,30 +454,142 @@ async def create_moa_video(body: CreateMoARequest, user_id: str | None = None, v
             detail=f"MoA render failed: {e}",
         )
 
+@app.post("/create-doctor")
+async def create_doctor_video(body: CreateDoctorRequest, user_id: str | None = None, video_id: str | None = None):
+    """
+    Generate doctor-facing HCP promotional video.
+    Mix of Manim (scientific) + 1 Pexels (closing visual).
+    """
+    from app.doctor_ad_stages.stage1_doctor_scenes import generate_doctor_scenes
+    from app.doctor_ad_stages.stage2_doctor_manim import run_stage2_doctor
+    from app.doctor_ad_stages.stage3_pexels_fetch import run_stage3_pexels
+    from app.doctor_ad_stages.stage5_doctor_render import render_doctor_video
+    
+    pipeline_start = time.time()
+    
+    if not video_id:
+        video_id = generate_video_id()
+    
+    logger.info(
+        f"Starting Doctor Ad pipeline - Video ID: {video_id}",
+        extra={"stage": "PIPELINE START"}
+    )
+    
+    try:
+        # DB tracking
+        try:
+            uid = await db.ensure_user(user_id)
+            session_id = await db.create_session(
+                uid, video_id, status="processing",
+                metadata={
+                    "drug_name": body.drug_name,
+                    "indication": body.indication,
+                    "video_type": "doctor_ad"
+                }
+            )
+            await db.create_video_record(video_id, session_id, path=None, state="processing")
+        except Exception as e:
+            logger.warning(f"DB record creation failed: {e}")
+        
+        # Stage 1: Scene planning
+        # Stage 1: Scene planning
+        stage_logger = StageLogger("Doctor Scene Planning")
+        stage_logger.start()
+        
+        scenes_data = generate_doctor_scenes(
+            drug_name=body.drug_name,
+            indication=body.indication,
+            moa_summary=body.moa_summary,
+            clinical_data=body.clinical_data,
+            pexels_query=body.pexels_query
+        )
+        
+        scenes = scenes_data.get("scenes", [])
+        stage_logger.complete(f"{len(scenes)} scenes planned")
+        
+        if not scenes:
+            raise HTTPException(500, "No scenes generated")
+        
+        # Stage 3: Fetch Pexels EARLY (for injection into scene data)
+        pexels_media = run_stage3_pexels(scenes_data, video_id)
+        
+        # Inject Pexels image path into closing scene and change type to 'manim'
+        for scene in scenes:
+            if scene.get("type") == "pexels":
+                scene_id = scene["scene_id"]
+                media = pexels_media.get(scene_id, {})
+                image_path = media.get("image", {}).get("local_path")
+                if image_path:
+                    scene["pexels_image_path"] = image_path
+                    scene["type"] = "manim"  # Treat as Manim now
+                else:
+                    logger.warning(f"Scene {scene_id}: No Pexels image, falling back to plain Manim")
 
+        # Stage: Script (reuse)
+        stage_logger = StageLogger("Script Writing")
+        stage_logger.start()
+        
+        script = generate_script(scenes, persona=body.persona, tone=body.tone)
+        
+        stage_logger.complete(f"{len(script)} scripts generated")
+        
+        # Stage 2: Manim code generation (now for ALL scenes)
+        run_stage2_doctor(scenes_data, script, video_id, max_workers=3)
+        
+        # Stage 4: TTS (reuse)
+        scene_ids = [s["scene_id"] for s in scenes]
+        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids, max_workers=5)
+        
+        # Stage 5: Render (all as Manim)
+        final_path = render_doctor_video(video_id, scenes_data, quality=body.quality)
+        
+        # Update DB
+        try:
+            await db.update_video_state(video_id, state="complete", path=str(final_path))
+        except Exception as e:
+            logger.warning(f"DB update failed: {e}")
+        
+        total_time = time.time() - pipeline_start
+        
+        return {
+            "status": "complete",
+            "video_id": video_id,
+            "video_type": "doctor_ad",
+            "drug_name": body.drug_name,
+            "video_path": str(final_path),
+            "elapsed_seconds": round(total_time, 1),
+            "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s"
+        }
+        
+    except Exception as e:
+        logger.error(f"Doctor Ad pipeline failed: {e}", extra={"stage": "PIPELINE ERROR"})
+        raise HTTPException(500, f"Doctor Ad render failed: {e}")
 
 @app.get("/video/{video_id}")
 async def get_video(video_id: str, request: Request):
+    """Stream final video with range request support."""
+    # Try different video types
     video_path = VIDEOS_DIR / video_id / "final.mp4"
-
+    
     if not video_path.exists():
         video_path = VIDEOS_DIR / video_id / "final_moa.mp4"
-
+    
+    if not video_path.exists():
+        video_path = VIDEOS_DIR / video_id / "final_doctor.mp4"  
+    
     if not video_path.exists():
         raise HTTPException(404, "Video not found")
-
+    
     return FileResponse(video_path, media_type="video/mp4")
 
 
-@app.get("/generate-uuid")
-def generate_uuid():
-    """Generate UUIDs for a video session (user_id and video_id)."""
+@app.get("/generate-user-id")
+def generate_user_id():
+    """Generate a user ID for tracking multiple video generations."""
     user_id = str(uuid.uuid4())
-    video_id = generate_video_id()
     return {
         "user_id": user_id,
-        "video_id": video_id,
-        "message": "Pass both user_id and video_id to /create or /create-moa endpoints"
+        "message": "Pass this user_id to /create or /create-moa endpoints. A new video_id will be generated for each video."
     }
 
 
@@ -479,10 +598,10 @@ def root():
     return {
         "service": "Pharma Video Generator",
         "endpoints": {
-            "generate_uuid": {
+            "generate_user_id": {
                 "method": "GET",
-                "path": "/generate-uuid",
-                "description": "Generate a new UUID for tracking a video session"
+                "path": "/generate-user-id",
+                "description": "Generate a new user ID for tracking multiple videos"
             }
         },
         "pipelines": {
