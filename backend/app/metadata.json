@@ -1,0 +1,571 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "last_updated": "2026-02-07T17:30:00",
+    "total_assets": 71,
+    "source": "manual_download_wikimedia_commons",
+    "format": "svg"
+  },
+  "assets": {
+    "adult-skeleton-front-view.svg": {
+      "category": "anatomy",
+      "subcategory": "skeletal",
+      "tags": ["skeleton", "bones", "front", "adult", "full-body"],
+      "description": "Adult human skeleton front view",
+      "has_labels": false,
+      "complexity": "high"
+    },
+    "adult-skeleton-side-view.svg": {
+      "category": "anatomy",
+      "subcategory": "skeletal",
+      "tags": ["skeleton", "bones", "side", "lateral", "adult"],
+      "description": "Adult human skeleton side view",
+      "has_labels": false,
+      "complexity": "high"
+    },
+    "alveoli-lung-detail.svg": {
+      "category": "anatomy",
+      "subcategory": "respiratory",
+      "tags": ["alveoli", "lung", "detail", "gas-exchange"],
+      "description": "Alveoli detailed structure in lungs",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "artery-anatomy.svg": {
+      "category": "anatomy",
+      "subcategory": "cardiovascular",
+      "tags": ["artery", "blood-vessel", "anatomy"],
+      "description": "Artery anatomical structure",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "bacterium.svg": {
+      "category": "cellular",
+      "subcategory": "microorganisms",
+      "tags": ["bacteria", "microorganism", "pathogen"],
+      "description": "Bacterial cell structure",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "banana.svg": {
+      "category": "other",
+      "subcategory": "objects",
+      "tags": ["banana", "fruit", "food"],
+      "description": "Banana illustration",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "blood-vessel.svg": {
+      "category": "anatomy",
+      "subcategory": "cardiovascular",
+      "tags": ["blood-vessel", "vascular"],
+      "description": "Generic blood vessel",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "brain-anatomy-side.svg": {
+      "category": "anatomy",
+      "subcategory": "nervous",
+      "tags": ["brain", "side-view", "sagittal", "cerebral"],
+      "description": "Brain anatomy side view",
+      "has_labels": false,
+      "complexity": "high"
+    },
+    "brain-anatomy-top.svg": {
+      "category": "anatomy",
+      "subcategory": "nervous",
+      "tags": ["brain", "top-view", "superior", "cerebral"],
+      "description": "Brain anatomy top view",
+      "has_labels": false,
+      "complexity": "high"
+    },
+    "capsules.svg": {
+      "category": "medical",
+      "subcategory": "drugs",
+      "tags": ["capsule", "medication", "pill", "drug"],
+      "description": "Medical capsules",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "cell-division-mitosis.svg": {
+      "category": "cellular",
+      "subcategory": "processes",
+      "tags": ["mitosis", "cell-division", "process"],
+      "description": "Cell division mitosis stages",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "cell-membrane.svg": {
+      "category": "cellular",
+      "subcategory": "cells",
+      "tags": ["cell-membrane", "phospholipid", "bilayer"],
+      "description": "Cell membrane structure",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "cell-wall.svg": {
+      "category": "cellular",
+      "subcategory": "cells",
+      "tags": ["cell-wall", "structure"],
+      "description": "Cell wall structure",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "checkmark-positive-negative-effects.svg": {
+      "category": "medical",
+      "subcategory": "symbols",
+      "tags": ["checkmark", "indicator", "positive", "negative"],
+      "description": "Checkmark and X for effects",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "child-skeleton.svg": {
+      "category": "anatomy",
+      "subcategory": "skeletal",
+      "tags": ["skeleton", "child", "pediatric"],
+      "description": "Child skeleton",
+      "has_labels": false,
+      "complexity": "high"
+    },
+    "circulatory-system.svg": {
+      "category": "anatomy",
+      "subcategory": "cardiovascular",
+      "tags": ["circulatory", "system", "blood", "heart"],
+      "description": "Circulatory system overview",
+      "has_labels": false,
+      "complexity": "high"
+    },
+    "digestive-system.svg": {
+      "category": "anatomy",
+      "subcategory": "digestive",
+      "tags": ["digestive", "system", "gastrointestinal"],
+      "description": "Digestive system overview",
+      "has_labels": false,
+      "complexity": "high"
+    },
+    "dna-helix-colored.svg": {
+      "category": "molecular",
+      "subcategory": "genetics",
+      "tags": ["dna", "helix", "genetic", "double-helix"],
+      "description": "Colored DNA double helix",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "dna-helix-silhouette.svg": {
+      "category": "molecular",
+      "subcategory": "genetics",
+      "tags": ["dna", "helix", "silhouette"],
+      "description": "DNA helix silhouette",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "ear-anatomy.svg": {
+      "category": "anatomy",
+      "subcategory": "sensory",
+      "tags": ["ear", "hearing", "auditory"],
+      "description": "Ear anatomy",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "elbow-joint-anatomy.svg": {
+      "category": "anatomy",
+      "subcategory": "skeletal",
+      "tags": ["elbow", "joint", "articulation"],
+      "description": "Elbow joint anatomy",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "eye-anatomy.svg": {
+      "category": "anatomy",
+      "subcategory": "sensory",
+      "tags": ["eye", "vision", "optical"],
+      "description": "Eye anatomy",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "foetus-skeleton.svg": {
+      "category": "anatomy",
+      "subcategory": "skeletal",
+      "tags": ["fetus", "skeleton", "prenatal"],
+      "description": "Fetal skeleton",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "full-body-outline-female-front-view.svg": {
+      "category": "anatomy",
+      "subcategory": "silhouettes",
+      "tags": ["body", "silhouette", "female", "front"],
+      "description": "Female body outline front view",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "full-body-outline-male-front-view.svg": {
+      "category": "anatomy",
+      "subcategory": "silhouettes",
+      "tags": ["body", "silhouette", "male", "front"],
+      "description": "Male body outline front view",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "full-body-outline-side-view.svg": {
+      "category": "anatomy",
+      "subcategory": "silhouettes",
+      "tags": ["body", "silhouette", "side", "lateral"],
+      "description": "Body outline side view",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "generalized-cell-diagram-labelled.svg": {
+      "category": "cellular",
+      "subcategory": "cells",
+      "tags": ["cell", "diagram", "labeled", "organelles"],
+      "description": "Generalized cell diagram with labels",
+      "has_labels": true,
+      "complexity": "medium"
+    },
+    "head-front-view.svg": {
+      "category": "anatomy",
+      "subcategory": "silhouettes",
+      "tags": ["head", "silhouette", "front"],
+      "description": "Head front view",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "heart-anatomy.svg": {
+      "category": "anatomy",
+      "subcategory": "cardiovascular",
+      "tags": ["heart", "anatomy", "chambers", "cardiac"],
+      "description": "Heart anatomical structure",
+      "has_labels": false,
+      "complexity": "high"
+    },
+    "heart-silhouette.svg": {
+      "category": "anatomy",
+      "subcategory": "cardiovascular",
+      "tags": ["heart", "silhouette", "cardiac"],
+      "description": "Heart silhouette",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "injection.svg": {
+      "category": "medical",
+      "subcategory": "devices",
+      "tags": ["injection", "needle", "syringe"],
+      "description": "Injection/needle",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "intestine-anatomy.svg": {
+      "category": "anatomy",
+      "subcategory": "digestive",
+      "tags": ["intestine", "gut", "bowel"],
+      "description": "Intestine anatomy",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "intestine-silhouette.svg": {
+      "category": "anatomy",
+      "subcategory": "digestive",
+      "tags": ["intestine", "silhouette"],
+      "description": "Intestine silhouette",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "iv-drip.svg": {
+      "category": "medical",
+      "subcategory": "devices",
+      "tags": ["iv", "drip", "infusion", "intravenous"],
+      "description": "IV drip infusion",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "kidney-anatomy-both.svg": {
+      "category": "anatomy",
+      "subcategory": "urinary",
+      "tags": ["kidney", "renal", "pair"],
+      "description": "Both kidneys anatomy",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "kidney-silhouette.svg": {
+      "category": "anatomy",
+      "subcategory": "urinary",
+      "tags": ["kidney", "silhouette", "renal"],
+      "description": "Kidney silhouette",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "knee-joint-anatomy.svg": {
+      "category": "anatomy",
+      "subcategory": "skeletal",
+      "tags": ["knee", "joint", "articulation"],
+      "description": "Knee joint anatomy",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "lungs-anatomy.svg": {
+      "category": "anatomy",
+      "subcategory": "respiratory",
+      "tags": ["lungs", "respiratory", "pulmonary"],
+      "description": "Lungs anatomy",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "lungs-silhouette.svg": {
+      "category": "anatomy",
+      "subcategory": "respiratory",
+      "tags": ["lungs", "silhouette"],
+      "description": "Lungs silhouette",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "medical-plus.svg": {
+      "category": "medical",
+      "subcategory": "symbols",
+      "tags": ["medical", "plus", "cross", "health"],
+      "description": "Medical plus symbol",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "molecule-geometry.svg": {
+      "category": "molecular",
+      "subcategory": "molecules",
+      "tags": ["molecule", "chemical", "structure"],
+      "description": "Geometric molecule structure",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "muscle-tissue.svg": {
+      "category": "anatomy",
+      "subcategory": "muscular",
+      "tags": ["muscle", "tissue", "fiber"],
+      "description": "Muscle tissue",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "neck-front-view.svg": {
+      "category": "anatomy",
+      "subcategory": "silhouettes",
+      "tags": ["neck", "front", "silhouette"],
+      "description": "Neck front view",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "nephron-kideny-detail.svg": {
+      "category": "anatomy",
+      "subcategory": "urinary",
+      "tags": ["nephron", "kidney", "detail", "filtration"],
+      "description": "Nephron kidney detail",
+      "has_labels": false,
+      "complexity": "high"
+    },
+    "neuron-anatomy.svg": {
+      "category": "anatomy",
+      "subcategory": "nervous",
+      "tags": ["neuron", "nerve", "cell"],
+      "description": "Neuron anatomy",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "neuron-silhouette.svg": {
+      "category": "anatomy",
+      "subcategory": "nervous",
+      "tags": ["neuron", "silhouette"],
+      "description": "Neuron silhouette",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "pain-indicator.svg": {
+      "category": "medical",
+      "subcategory": "symbols",
+      "tags": ["pain", "indicator", "symptom"],
+      "description": "Pain indicator symbol",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "pancreas-anatomy.svg": {
+      "category": "anatomy",
+      "subcategory": "digestive",
+      "tags": ["pancreas", "organ", "endocrine"],
+      "description": "Pancreas anatomy",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "pancreas-silhouette.svg": {
+      "category": "anatomy",
+      "subcategory": "digestive",
+      "tags": ["pancreas", "silhouette"],
+      "description": "Pancreas silhouette",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "plateletes.svg": {
+      "category": "cellular",
+      "subcategory": "blood",
+      "tags": ["platelets", "blood", "thrombocyte"],
+      "description": "Platelets",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "protein.svg": {
+      "category": "molecular",
+      "subcategory": "proteins",
+      "tags": ["protein", "molecule", "structure"],
+      "description": "Protein structure",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "red-blood-cell.svg": {
+      "category": "cellular",
+      "subcategory": "blood",
+      "tags": ["red-blood-cell", "erythrocyte", "rbc"],
+      "description": "Red blood cell",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "ribcage-anatomy.svg": {
+      "category": "anatomy",
+      "subcategory": "skeletal",
+      "tags": ["ribcage", "ribs", "thorax"],
+      "description": "Ribcage anatomy",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "ribcage-silhouette.svg": {
+      "category": "anatomy",
+      "subcategory": "skeletal",
+      "tags": ["ribcage", "silhouette"],
+      "description": "Ribcage silhouette",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "skin-layers-cross-section.svg": {
+      "category": "anatomy",
+      "subcategory": "integumentary",
+      "tags": ["skin", "layers", "cross-section", "dermis"],
+      "description": "Skin layers cross-section",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "spine-anatomy.svg": {
+      "category": "anatomy",
+      "subcategory": "skeletal",
+      "tags": ["spine", "vertebrae", "spinal"],
+      "description": "Spine anatomy",
+      "has_labels": false,
+      "complexity": "high"
+    },
+    "spine-silhouette.svg": {
+      "category": "anatomy",
+      "subcategory": "skeletal",
+      "tags": ["spine", "silhouette"],
+      "description": "Spine silhouette",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "stomach-anatomy.svg": {
+      "category": "anatomy",
+      "subcategory": "digestive",
+      "tags": ["stomach", "gastric"],
+      "description": "Stomach anatomy",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "stomach-silhouette.svg": {
+      "category": "anatomy",
+      "subcategory": "digestive",
+      "tags": ["stomach", "silhouette"],
+      "description": "Stomach silhouette",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "swallowing-system.svg": {
+      "category": "anatomy",
+      "subcategory": "digestive",
+      "tags": ["swallowing", "pharynx", "esophagus"],
+      "description": "Swallowing system",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "syringe.svg": {
+      "category": "medical",
+      "subcategory": "devices",
+      "tags": ["syringe", "injection", "needle"],
+      "description": "Syringe",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "tablets.svg": {
+      "category": "medical",
+      "subcategory": "drugs",
+      "tags": ["tablets", "pills", "medication"],
+      "description": "Tablets/pills",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "teenage-girl-skeleton.svg": {
+      "category": "anatomy",
+      "subcategory": "skeletal",
+      "tags": ["skeleton", "teenage", "adolescent"],
+      "description": "Teenage girl skeleton",
+      "has_labels": false,
+      "complexity": "high"
+    },
+    "tooth-anatomy.svg": {
+      "category": "anatomy",
+      "subcategory": "dental",
+      "tags": ["tooth", "dental", "cross-section"],
+      "description": "Tooth anatomy",
+      "has_labels": false,
+      "complexity": "medium"
+    },
+    "torso-male-front-view.svg": {
+      "category": "anatomy",
+      "subcategory": "silhouettes",
+      "tags": ["torso", "male", "front"],
+      "description": "Male torso front view",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "vein-blood-vessel.svg": {
+      "category": "anatomy",
+      "subcategory": "cardiovascular",
+      "tags": ["vein", "blood-vessel", "venous"],
+      "description": "Vein blood vessel",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "virus.svg": {
+      "category": "cellular",
+      "subcategory": "microorganisms",
+      "tags": ["virus", "pathogen", "viral"],
+      "description": "Virus particle",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "white-blood-cell.svg": {
+      "category": "cellular",
+      "subcategory": "blood",
+      "tags": ["white-blood-cell", "leukocyte", "wbc"],
+      "description": "White blood cell",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "x-shaped-antibody.svg": {
+      "category": "molecular",
+      "subcategory": "proteins",
+      "tags": ["antibody", "immunoglobulin", "immune"],
+      "description": "X-shaped antibody",
+      "has_labels": false,
+      "complexity": "low"
+    },
+    "y-shaped-antibody.svg": {
+      "category": "molecular",
+      "subcategory": "proteins",
+      "tags": ["antibody", "immunoglobulin", "immune"],
+      "description": "Y-shaped antibody",
+      "has_labels": false,
+      "complexity": "low"
+    }
+  }
+}
