@@ -179,25 +179,65 @@ def render_manim_scene_sm(
         portrait_video = output_dir / f"scene_{scene_id}_portrait.mp4"
 
         try:
+            # ────────────────────────────────────────────────
+            # Tunable parameters – adjust based on your Manim content
+            fg_scale_factor = 0.76       # 0.74 – 0.80; most Manim scenes need ~0.75–0.77
+            bg_blur_radius  = 60         # higher = more background blur
+            bg_blur_sigma   = 2.0
+            bg_brightness   = -0.08
+            bg_saturation   = 0.30
+            # ────────────────────────────────────────────────
+
+            fg_height = int(round(height * fg_scale_factor))
+
+            filter_complex = (
+                f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
+                f"crop={width}:{height},"
+                f"boxblur={bg_blur_radius}:{bg_blur_sigma},"
+                f"eq=brightness={bg_brightness}:saturation={bg_saturation}[bg];"
+                f"[0:v]scale=-2:{fg_height}[fg];"
+                f"[bg][fg]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2"
+            )
+
             ff_cmd = [
-                "ffmpeg", "-y", "-i", str(rendered_video),
-                "-vf", f"scale={width}:-2,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
+                "ffmpeg", "-y",
+                "-i", str(rendered_video),
+                "-filter_complex", filter_complex,
                 "-c:v", "libx264", "-crf", "23", "-preset", "veryfast",
+                "-c:a", "aac", "-b:a", "128k",
+                "-movflags", "+faststart",           # better streaming
                 str(portrait_video)
             ]
-            logger.info(f"Scene {scene_id}: Re-encoding to portrait {width}x{height} via ffmpeg")
-            r = subprocess.run(ff_cmd, capture_output=True, text=True, timeout=120)
-            if r.returncode != 0:
-                logger.error(f"Scene {scene_id}: ffmpeg portrait encode failed: {r.stderr[:400]}")
-                # fallback to using original rendered video
-                final_render_video = rendered_video
-            else:
-                final_render_video = portrait_video
-                logger.info(f"Scene {scene_id}: Portrait video created → {portrait_video}")
-        except Exception as e:
-            logger.error(f"Scene {scene_id}: ffmpeg portrait encode exception: {e}")
+
+            logger.info(
+                f"Scene {scene_id}: Re-encoding to portrait {width}×{height} "
+                f"(fg_scale={fg_scale_factor}, blur={bg_blur_radius}:{bg_blur_sigma})"
+            )
+            # logger.debug(f"Filter complex: {filter_complex}")   # uncomment for debugging
+
+            r = subprocess.run(
+                ff_cmd,
+                capture_output=True,
+                text=True,
+                timeout=180,          # 3 minutes – should be plenty per scene
+                check=True
+            )
+
+            final_render_video = portrait_video
+            logger.info(f"Scene {scene_id}: Portrait video created → {portrait_video}")
+
+        except subprocess.CalledProcessError as err:
+            logger.error(
+                f"ffmpeg portrait encode failed (scene {scene_id}):\n"
+                f"{err.stderr[:800]}"   # show more of the error
+            )
+            final_render_video = rendered_video   # fallback to landscape version
+        except subprocess.TimeoutExpired:
+            logger.error(f"ffmpeg timeout (scene {scene_id})")
             final_render_video = rendered_video
-        
+        except Exception as e:
+            logger.error(f"Unexpected error in portrait conversion (scene {scene_id}): {e}")
+            final_render_video = rendered_video        
         logger.info(f"Scene {scene_id}: Render complete → {rendered_video}")
         return (scene_id, final_render_video)
 

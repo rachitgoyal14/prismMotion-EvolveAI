@@ -36,6 +36,7 @@ import io
 
 # Logging setup
 from app.utils.logging_config import setup_logging, StageLogger
+from app.utils.video_utils import convert_to_portrait_9_16
 
 setup_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -880,6 +881,7 @@ async def create_sm_remotion_video(
     brand_name: str = Form(""),
     persona: str = Form("friendly brand narrator"),
     tone: str = Form("engaging and conversational"),
+    quality: str = Form("high"),
     logo: Optional[UploadFile] = File(None),
     image: Optional[UploadFile] = File(None),
     # Optional Sadtalker integration
@@ -962,16 +964,19 @@ async def create_sm_remotion_video(
         scene_ids = [s["scene_id"] for s in scenes]
         tts_generate(script=script, video_id=video_id, scene_ids=scene_ids)
 
-        # Stage 6: Render
-        final_path = render_remotion(video_id)
+        # Stage 6: Render (landscape)
+        landscape_path = render_remotion(video_id)
 
-        # Optional: integrate with Sadtalker
-        final_output_path = final_path
+        current_final = landscape_path
+
+        # ──────────────────────────────────────────────
+        # Optional: SadTalker integration
+        # ──────────────────────────────────────────────
         if integrate_sadtalker:
-            logger.info(f"Integrating with Sadtalker at {sadtalker_url}")
+            logger.info(f"Integrating SadTalker at {sadtalker_url}")
 
             sadtalker_image_path = None
-            if sadtalker_image and sadtalker_image.filename and sadtalker_image.content_type:
+            if sadtalker_image and sadtalker_image.filename:
                 ext = Path(sadtalker_image.filename).suffix
                 s_name = f"sadtalker_{uuid.uuid4()}{ext}"
                 s_path = images_dir / s_name
@@ -982,38 +987,52 @@ async def create_sm_remotion_video(
             audio_path = assets_dir / "audio_for_sadtalker.wav"
             try:
                 subprocess.run([
-                    "ffmpeg", "-y", "-i", str(final_path), "-vn",
+                    "ffmpeg", "-y", "-i", str(landscape_path), "-vn",
                     "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2",
                     str(audio_path)
-                ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Failed to extract audio for Sadtalker: {e.stderr.decode('utf-8', errors='ignore')}")
-                raise HTTPException(500, "Failed to extract audio for Sadtalker (ffmpeg error)")
+                ], check=True, capture_output=True)
+            except subprocess.CalledProcessError as err:
+                logger.error(f"Audio extraction failed: {err.stderr.decode(errors='ignore')}")
+                raise HTTPException(500, "Failed to extract audio for SadTalker")
 
             try:
-                sadtalker_video_path = _call_sadtalker_service(str(audio_path), sadtalker_image_path, sadtalker_url)
-            except HTTPException:
-                raise
+                sadtalker_video = _call_sadtalker_service(str(audio_path), sadtalker_image_path, sadtalker_url)
             except Exception as e:
-                logger.error(f"Sadtalker service call failed: {e}")
-                raise HTTPException(500, f"Sadtalker integration failed: {e}")
+                logger.exception("SadTalker failed")
+                raise HTTPException(500, f"SadTalker integration failed: {str(e)}")
 
-            merged_path = VIDEOS_DIR / video_id / "final_sadtalker.mp4"
+            merged_path = VIDEOS_DIR / video_id / "final_sadtalker_merged.mp4"
             try:
-                _merge_videos_side_by_side(str(final_path), sadtalker_video_path, str(merged_path))
-            except HTTPException:
-                raise
+                _merge_videos_side_by_side(str(landscape_path), sadtalker_video, str(merged_path))
+                current_final = merged_path
+                logger.info(f"SadTalker merged video created: {merged_path}")
             except Exception as e:
-                logger.error(f"Failed to merge videos: {e}")
-                raise HTTPException(500, f"Video merge failed: {e}")
+                logger.exception("Side-by-side merge failed")
+                # keep landscape as fallback
+                current_final = landscape_path
 
-            final_output_path = merged_path
+        # ──────────────────────────────────────────────
+        # FINAL STEP: Convert to 9:16 portrait (for Reels/Shorts/TikTok)
+        # ──────────────────────────────────────────────
+        portrait_path = VIDEOS_DIR / video_id / "final_sm_rm_portrait.mp4"
 
+        try:
+            final_output_path = convert_to_portrait_9_16(
+                input_video=current_final,
+                output_video=portrait_path,
+                quality=quality,
+                target_width=1080          # you can make this dynamic later
+            )
+            logger.info(f"Portrait 9:16 version ready: {final_output_path}")
+        except Exception as e:
+            logger.warning(f"Portrait conversion failed → falling back to original: {e}")
+            final_output_path = current_final
+
+        # Update DB
         try:
             await db.update_video_state(video_id, state="complete", path=str(final_output_path))
         except Exception as e:
             logger.warning(f"DB update failed: {e}")
-
         total_time = time.time() - pipeline_start
 
         return {
@@ -1021,11 +1040,13 @@ async def create_sm_remotion_video(
             "video_id": video_id,
             "video_type": "social_media_remotion",
             "video_path": str(final_output_path),
+            "is_portrait": final_output_path.name.endswith("_portrait.mp4"),
+            "used_sadtalker": integrate_sadtalker and bool(final_output_path.name == "final_sadtalker_merged.mp4" or "portrait" not in final_output_path.name),
             "elapsed_seconds": round(total_time, 1),
             "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s",
-            "platform_hint": "Instagram Reels, TikTok, YouTube Shorts"
+            "platform_hint": "Instagram Reels, TikTok, YouTube Shorts – 9:16 portrait optimized",
+            "quality_used": quality,
         }
-
     except Exception as e:
         logger.error(f"Social Media Remotion pipeline failed: {e}", extra={"stage": "PIPELINE ERROR"})
         raise HTTPException(500, f"Social Media Remotion render failed: {e}")
