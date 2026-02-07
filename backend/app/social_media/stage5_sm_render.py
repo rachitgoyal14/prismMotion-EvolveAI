@@ -1,0 +1,287 @@
+"""
+Stage 5 Social Media: Render Manim scenes and combine with audio for short-form videos.
+"""
+import subprocess
+import time
+import json
+from pathlib import Path
+from app.paths import OUTPUTS_DIR
+from app.utils.logging_config import StageLogger
+from app.utils.llm import call_llm
+from app.utils.json_safe import extract_json
+from app.paths import PROMPTS_DIR
+import logging
+logger = logging.getLogger(__name__)
+
+MANIM_DIR = OUTPUTS_DIR / "manim"
+VIDEOS_DIR = OUTPUTS_DIR / "videos"
+AUDIO_DIR = OUTPUTS_DIR / "audio"
+
+
+def auto_fix_runtime_error_with_llm_sm(
+    broken_code: str,
+    runtime_error: str,
+    scene_data: dict,
+    attempt: int
+) -> str:
+    """
+    Send runtime error + traceback to LLM for intelligent fix.
+    
+    Args:
+        broken_code: Manim code that failed at runtime
+        runtime_error: Full Python traceback
+        scene_data: Original scene requirements
+        attempt: Fix attempt number
+    
+    Returns:
+        Fixed code
+    """
+    logger.info(f"🔧 Asking LLM to fix runtime error (attempt {attempt})...", extra={'progress': True})
+    
+    # Load runtime fix prompt
+    fix_prompt_path = PROMPTS_DIR / "manim_runtime_fix.txt"
+    
+    if fix_prompt_path.exists():
+        fix_template = fix_prompt_path.read_text(encoding="utf-8")
+        fix_prompt = fix_template.replace("{runtime_error}", runtime_error) \
+                                  .replace("{broken_code}", broken_code) \
+                                  .replace("{scene_json}", json.dumps(scene_data, indent=2))
+    else:
+        fix_prompt = f"""Fix this Manim code that has a RUNTIME ERROR.
+Code:
+{broken_code}
+
+Error:
+{runtime_error}
+
+Scene:
+{json.dumps(scene_data, indent=2)}
+
+Return ONLY the corrected code in a code block."""
+    
+    full_prompt = f"""You are a Manim expert. Fix runtime errors in Manim animations.
+
+{fix_prompt}"""
+    response = call_llm(full_prompt)
+    
+    # Extract code from response
+    if "```python" in response:
+        code = response.split("```python")[1].split("```")[0].strip()
+    elif "```" in response:
+        code = response.split("```")[1].split("```")[0].strip()
+    else:
+        code = response
+    
+    return code
+
+
+def render_manim_scene_sm(
+    scene_data: dict,
+    manim_code_path: Path,
+    video_id: str,
+    quality: str = "high"
+) -> tuple[int, Path | None]:
+    """
+    Render a single Manim scene for social media (short-form).
+    
+    Returns:
+        (scene_id, video_path or None on success)
+    """
+    scene_id = scene_data.get("scene_id", 0)
+    output_dir = VIDEOS_DIR / video_id / "manim_renders"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Determine quality settings (faster for SM)
+    quality_flags = {"low": "-ql", "medium": "-qm", "high": "-qh"}
+    quality_dirs = {"low": "480p15", "medium": "720p30", "high": "1080p60"}
+    
+    flag = quality_flags.get(quality, "-qh")
+    quality_dir = quality_dirs.get(quality, "1080p60")
+    scene_class = f"Scene{scene_id}"
+    
+    logger.info(f"Scene {scene_id}: Rendering Manim ({quality_dir})...")
+    
+    try:
+        # Render Manim
+        cmd = [
+            "manim", flag,
+            str(manim_code_path),
+            scene_class,
+            "-o", f"scene_{scene_id}.mp4",
+            "--media_dir", str(output_dir),
+            "--disable_caching"
+        ]
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minutes per scene
+        )
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"Manim render failed:\n{result.stderr}")
+        
+        # Find rendered video
+        rendered_video = output_dir / "videos" / f"scene_{scene_id}" / quality_dir / f"scene_{scene_id}.mp4"
+        if not rendered_video.exists():
+            logger.warning(f"Scene {scene_id}: Rendered video not found at {rendered_video}")
+            return (scene_id, None)
+        
+        logger.info(f"Scene {scene_id}: Render complete → {rendered_video}")
+        return (scene_id, rendered_video)
+        
+    except subprocess.TimeoutExpired:
+        logger.error(f"Scene {scene_id}: Render timeout (5min limit)")
+        return (scene_id, None)
+    except Exception as e:
+        logger.error(f"Scene {scene_id}: Render failed - {e}")
+        return (scene_id, None)
+
+
+def combine_video_audio_sm(video_path: Path, audio_path: Path, output_path: Path) -> None:
+    """Combine single video with audio using FFmpeg."""
+    if not audio_path.exists():
+        logger.warning(f"Audio file not found: {audio_path}, copying video only")
+        import shutil
+        shutil.copy(str(video_path), str(output_path))
+        return
+    
+    cmd = [
+        "ffmpeg",
+        "-i", str(video_path),
+        "-i", str(audio_path),
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-shortest",
+        "-y",
+        str(output_path)
+    ]
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+        logger.info(f"Audio combined → {output_path}")
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("FFmpeg audio combine timeout")
+    except Exception as e:
+        raise RuntimeError(f"FFmpeg audio combine failed: {str(e)[:200]}")
+
+
+def concatenate_videos_sm(video_paths: list[Path], output_path: Path) -> None:
+    """
+    Concatenate video clips with audio overlays using ffmpeg.
+    Optimized for social media (adds padding/borders if needed).
+    """
+    if not video_paths:
+        raise ValueError("No videos to concatenate")
+    
+    logger.info(f"Concatenating {len(video_paths)} videos...")
+    
+    # Create concat file
+    concat_file = output_path.parent / "concat.txt"
+    with open(concat_file, "w") as f:
+        for path in video_paths:
+            if path.exists():
+                f.write(f"file '{path.resolve()}'\n")
+    
+    # FFmpeg concatenate
+    cmd = [
+        "ffmpeg", "-f", "concat", "-safe", "0",
+        "-i", str(concat_file),
+        "-c", "copy",  # No re-encoding
+        "-y",  # Overwrite
+        str(output_path)
+    ]
+    
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        raise RuntimeError(f"FFmpeg concat failed:\n{result.stderr}")
+    
+    logger.info(f"Videos concatenated → {output_path}")
+    concat_file.unlink()  # Cleanup
+
+
+def render_sm_video(
+    video_id: str,
+    scenes_data: dict,
+    quality: str = "high"
+) -> Path:
+    """
+    Main render function for social media videos.
+    Renders all Manim scenes + combines with audio for each scene.
+    
+    Returns:
+        Path to final video
+    """
+    manim_code_dir = VIDEOS_DIR / video_id / "manim"
+    audio_dir = AUDIO_DIR / video_id
+    output_dir = VIDEOS_DIR / video_id
+    final_output = output_dir / "final_sm.mp4"
+    
+    logger.info(f"Starting SM render pipeline (quality={quality})")
+    
+    stage_logger = StageLogger("Social Media Render")
+    stage_logger.start()
+    render_start = time.time()
+    
+    scenes = scenes_data.get("scenes", [])
+    final_videos = []
+    
+    # Render each Manim scene and combine with audio
+    for i, scene in enumerate(scenes):
+        scene_id = scene.get("scene_id", i)
+        code_path = manim_code_dir / f"scene_{scene_id}.py"
+        
+        if not code_path.exists():
+            logger.warning(f"Scene {scene_id}: Code file not found, skipping")
+            continue
+        
+        # Render Manim
+        scene_id_ret, video_path = render_manim_scene_sm(scene, code_path, video_id, quality)
+        
+        if not video_path:
+            logger.error(f"Scene {scene_id}: Render failed")
+            continue
+        
+        # Find and combine audio
+        audio_file = audio_dir / f"scene_{scene_id}.wav"
+        if not audio_file.exists():
+            # Try .mp3 as fallback
+            audio_file = audio_dir / f"scene_{scene_id}.mp3"
+        
+        if audio_file.exists():
+            try:
+                final_scene_video = output_dir / f"scene_{scene_id}_final.mp4"
+                combine_video_audio_sm(video_path, audio_file, final_scene_video)
+                final_videos.append(final_scene_video)
+                logger.info(f"Scene {scene_id}: Manim + audio combined ✓")
+            except Exception as e:
+                logger.warning(f"Scene {scene_id}: Audio combine failed - {e}, using silent")
+                final_videos.append(video_path)
+        else:
+            logger.warning(f"Scene {scene_id}: No audio found, using silent")
+            final_videos.append(video_path)
+    
+    if not final_videos:
+        raise RuntimeError("No scenes rendered successfully")
+    
+    # Concatenate all videos with audio
+    try:
+        concatenate_videos_sm(final_videos, final_output)
+        logger.info(f"Videos concatenated → {final_output}")
+    except Exception as e:
+        logger.error(f"Concatenation failed: {e}")
+        # Fallback: just use first video
+        if final_videos:
+            import shutil
+            shutil.copy(str(final_videos[0]), str(final_output))
+            logger.info("Fallback: Using first video")
+    
+    render_elapsed = time.time() - render_start
+    stage_logger.complete(f"Final video: {final_output}")
+    logger.info(f"Render complete: {final_output} (render_seconds={round(render_elapsed,1)})")
+    
+    return final_output

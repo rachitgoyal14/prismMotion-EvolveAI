@@ -131,6 +131,17 @@ class CreateDoctorRequest(BaseModel):
     quality: str = "high"
 
 
+class CreateSocialMediaRequest(BaseModel):
+    """Social media short-form video (Instagram Reels, TikTok) using Manim + Pexels."""
+    drug_name: str
+    indication: str
+    key_benefit: str = ""
+    target_audience: str = "patients"
+    persona: str = "friendly health narrator"
+    tone: str = "engaging and conversational"
+    quality: str = "high"
+
+
 class CreateVideoForm:
     def __init__(
         self,
@@ -565,6 +576,119 @@ async def create_doctor_video(body: CreateDoctorRequest, user_id: str | None = N
         logger.error(f"Doctor Ad pipeline failed: {e}", extra={"stage": "PIPELINE ERROR"})
         raise HTTPException(500, f"Doctor Ad render failed: {e}")
 
+@app.post("/create-sm")
+async def create_sm_video(body: CreateSocialMediaRequest, user_id: str | None = None):
+    """
+    Generate social media short-form video (Instagram Reels, TikTok).
+    Mix of Manim (animations) + Pexels (visual assets).
+    Optimized for 15-60 second videos.
+    """
+    from app.social_media.stage1_sm_scenes import generate_sm_scenes
+    from app.social_media.stage2_sm_manim import run_stage2_sm
+    from app.social_media.stage3_sm_pexels_fetch import run_stage3_sm_pexels
+    from app.social_media.stage5_sm_render import render_sm_video
+    
+    pipeline_start = time.time()
+    video_id = generate_video_id()
+    
+    logger.info(
+        f"Starting Social Media pipeline - Video ID: {video_id}",
+        extra={"stage": "PIPELINE START"}
+    )
+    
+    try:
+        # DB tracking
+        try:
+            uid = await db.ensure_user(user_id)
+            session_id = await db.create_session(
+                uid, video_id, status="processing",
+                metadata={
+                    "drug_name": body.drug_name,
+                    "indication": body.indication,
+                    "video_type": "social_media"
+                }
+            )
+            await db.create_video_record(video_id, session_id, path=None, state="processing")
+        except Exception as e:
+            logger.warning(f"DB record creation failed: {e}")
+        
+        # Stage 1: Scene planning
+        stage_logger = StageLogger("Social Media Scene Planning")
+        stage_logger.start()
+        
+        scenes_data = generate_sm_scenes(
+            drug_name=body.drug_name,
+            indication=body.indication,
+            key_benefit=body.key_benefit,
+            target_audience=body.target_audience,
+        )
+        
+        scenes = scenes_data.get("scenes", [])
+        stage_logger.complete(f"{len(scenes)} scenes planned")
+        
+        if not scenes:
+            raise HTTPException(500, "No scenes generated")
+        
+        # Stage 3: Fetch Pexels media
+        pexels_media = run_stage3_sm_pexels(scenes_data, video_id)
+
+        # Inject Pexels media paths into scenes (attach whenever available)
+        for scene in scenes:
+            scene_id = scene.get("scene_id")
+            if scene_id is None:
+                continue
+            media = pexels_media.get(scene_id, {})
+            image_path = media.get("image", {}).get("local_path")
+            if image_path:
+                scene["pexels_image_path"] = image_path
+                # Ensure scene will be treated as a Manim scene so prompt can embed the image
+                scene["type"] = "manim"
+            else:
+                # no image for this scene
+                logger.debug(f"Scene {scene_id}: No Pexels media attached")
+
+        # Stage: Script (reuse from main pipeline)
+        stage_logger = StageLogger("Script Writing")
+        stage_logger.start()
+        
+        script = generate_script(scenes, persona=body.persona, tone=body.tone)
+        
+        stage_logger.complete(f"{len(script)} scripts generated")
+        
+        # Stage 2: Manim code generation (optimized for SM)
+        run_stage2_sm(scenes_data, script, video_id, max_workers=3)
+        
+        # Stage 4: TTS (reuse)
+        scene_ids = [s["scene_id"] for s in scenes]
+        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids, max_workers=5)
+        
+        # Stage 5: Render (SM optimized)
+        final_path = render_sm_video(video_id, scenes_data, quality=body.quality)
+        
+        # Update DB
+        try:
+            await db.update_video_state(video_id, state="complete", path=str(final_path))
+        except Exception as e:
+            logger.warning(f"DB update failed: {e}")
+        
+        total_time = time.time() - pipeline_start
+        
+        return {
+            "status": "complete",
+            "video_id": video_id,
+            "video_type": "social_media",
+            "drug_name": body.drug_name,
+            "video_path": str(final_path),
+            "elapsed_seconds": round(total_time, 1),
+            "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s",
+            "platform_hint": "Instagram Reels, TikTok, YouTube Shorts"
+        }
+        
+    except Exception as e:
+        logger.error(f"Social Media pipeline failed: {e}", extra={"stage": "PIPELINE ERROR"})
+        raise HTTPException(500, f"Social Media render failed: {e}")
+
+
 @app.get("/video/{video_id}")
 async def get_video(video_id: str, request: Request):
     """Stream final video with range request support."""
@@ -578,9 +702,13 @@ async def get_video(video_id: str, request: Request):
         video_path = VIDEOS_DIR / video_id / "final_doctor.mp4"  
     
     if not video_path.exists():
+        video_path = VIDEOS_DIR / video_id / "final_sm.mp4"
+    
+    if not video_path.exists():
         raise HTTPException(404, "Video not found")
     
     return FileResponse(video_path, media_type="video/mp4")
+
 
 
 @app.get("/generate-user-id")
@@ -614,6 +742,16 @@ def root():
                 "endpoint": "/create-moa",
                 "description": "Mechanism of Action educational videos",
                 "uses": "Manim animations + TTS"
+            },
+            "doctor_ad": {
+                "endpoint": "/create-doctor",
+                "description": "Doctor-facing HCP promotional videos",
+                "uses": "Manim animations + Pexels + TTS"
+            },
+            "social_media": {
+                "endpoint": "/create-sm",
+                "description": "Short-form social media videos (Instagram Reels, TikTok, YouTube Shorts)",
+                "uses": "Manim animations + Pexels + TTS"
             }
         }
     }
