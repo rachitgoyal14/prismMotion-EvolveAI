@@ -1,6 +1,6 @@
 """
 Stage 1 Doctor Ad: Plan scenes for HCP-focused promotional video.
-Mix of Manim (scientific) + 1 Logo (closing branding).
+Mix of Manim (scientific) + Product image + Logo (closing branding).
 """
 from pathlib import Path
 from app.utils.llm import call_llm
@@ -17,6 +17,7 @@ def generate_doctor_scenes(
     moa_summary: str = "",
     clinical_data: str = "",
     logo_path: str | None = None,
+    product_image_path: str | None = None,
     image_paths: list[str] | None = None,
     reference_docs: str | None = None
 ) -> dict:
@@ -29,6 +30,7 @@ def generate_doctor_scenes(
         moa_summary: Optional mechanism summary
         clinical_data: Optional clinical trial data
         logo_path: Path to company logo for final scene
+        product_image_path: Path to product image for product scene
         image_paths: Optional list of paths to images that can be referenced in scenes
         reference_docs: Optional text from documents to inform scene planning
     
@@ -39,7 +41,8 @@ def generate_doctor_scenes(
             "drug_name": "...",
             "scenes": [
                 {"scene_id": 1, "type": "manim", "duration_sec": 10, ...},
-                {"scene_id": 2, "type": "logo", "duration_sec": 6, "tagline": "..."}
+                {"scene_id": 2, "type": "product", "duration_sec": 7, "product_name": "..."},
+                {"scene_id": 3, "type": "logo", "duration_sec": 6, "tagline": "..."}
             ]
         }
     """
@@ -60,6 +63,8 @@ def generate_doctor_scenes(
         context += f"\nReference Docs: {reference_docs[:6000]}"  # Truncate for prompt
     if logo_path:
         context += f"\nLogo: {logo_path}"
+    if product_image_path:
+        context += f"\nProduct Image: {product_image_path}"
     if image_paths:
         context += f"\nImages: {', '.join(image_paths)}"
     if context:
@@ -85,16 +90,56 @@ def generate_doctor_scenes(
     scenes_data["video_type"] = "doctor_ad"
     if logo_path:
         scenes_data["logo_path"] = logo_path
+    if product_image_path:
+        scenes_data["product_image_path"] = product_image_path
     if image_paths:
         scenes_data["image_paths"] = image_paths
     if reference_docs:
         scenes_data["reference_docs"] = reference_docs[:6000]  # Store a truncated version for reference
     
 
-    # Ensure last scene is Logo
+    # Ensure correct scene order: Manim scenes → Product → Logo
     scenes = scenes_data["scenes"]
-    if scenes and scenes[-1]["type"] != "logo":
-        # Add Logo closing scene if missing
+    has_product = any(s.get("type") == "product" for s in scenes)
+    has_logo = any(s.get("type") == "logo" for s in scenes)
+    
+    # Add missing product scene before logo if needed
+    if not has_product and scenes:
+        logger.warning("No Product scene found, adding product scene")
+        # Insert product scene before logo (or at the end if no logo)
+        if has_logo:
+            # Find logo scene and insert product before it
+            logo_idx = next(i for i, s in enumerate(scenes) if s.get("type") == "logo")
+            scenes.insert(logo_idx, {
+                "scene_id": len(scenes) + 1,
+                "type": "product",
+                "duration_sec": 7,
+                "concept": "Product showcase",
+                "product_name": drug_name,
+                "narration_key_points": [
+                    f"{drug_name} - Available for your patients",
+                    "Contact your medical representative"
+                ]
+            })
+            # Renumber scenes
+            for i, scene in enumerate(scenes, 1):
+                scene["scene_id"] = i
+        else:
+            # Add at end
+            scenes.append({
+                "scene_id": len(scenes) + 1,
+                "type": "product",
+                "duration_sec": 7,
+                "concept": "Product showcase",
+                "product_name": drug_name,
+                "narration_key_points": [
+                    f"{drug_name} - Available for your patients",
+                    "Contact your medical representative"
+                ]
+            })
+    
+    # Add missing logo scene at the end if needed
+    if not has_logo and scenes:
         logger.warning("No Logo scene found, adding closing scene")
         scenes.append({
             "scene_id": len(scenes) + 1,
@@ -103,10 +148,10 @@ def generate_doctor_scenes(
             "concept": "Company branding closure",
             "tagline": "Innovating Healthcare Solutions",
             "narration_key_points": [
-                "Contact your medical representative for more information"
+                "Full prescribing information available"
             ]
         })
     
-    logger.info(f"Generated {len(scenes)} scenes ({len([s for s in scenes if s['type']=='manim'])} Manim, {len([s for s in scenes if s['type']=='logo'])} Logo)")
+    logger.info(f"Generated {len(scenes)} scenes ({len([s for s in scenes if s['type']=='manim'])} Manim, {len([s for s in scenes if s['type']=='product'])} Product, {len([s for s in scenes if s['type']=='logo'])} Logo)")
     
     return scenes_data

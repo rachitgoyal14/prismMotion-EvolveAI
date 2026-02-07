@@ -9,8 +9,9 @@ Create a scene-by-scene breakdown for a doctor-facing video about:
 
 ## GUIDELINES
 
-- Total: 5-7 scenes (60-90 seconds total)
-- Scenes 1-N-1: Manim animations (scientific, MoA, data)
+- Total: 6-8 scenes (60-90 seconds total)
+- Scenes 1-N-2: Manim animations (scientific, MoA, data)
+- Scene N-1: Product image scene (showcase drug product)
 - Scene N (final): Logo scene (company branding closing shot)
 - Professional, evidence-based tone
 - Focus on efficacy, safety, dosing
@@ -26,7 +27,12 @@ Create a scene-by-scene breakdown for a doctor-facing video about:
 - Safety profile
 - Disease pathway
 
-### 2. Logo scene (type: "logo")
+### 2. Product scene (type: "product")
+- Second-to-last scene
+- Display product packaging/bottle
+- Shows the actual drug product
+
+### 3. Logo scene (type: "logo")
 - Final closing scene only
 - Display company logo with optional tagline
 - Professional brand closure
@@ -211,10 +217,11 @@ png_library/other/objects/banana.png
 
 Each scene needs:
 - **scene_id**: number (1, 2, 3...)
-- **type**: "manim" or "logo"
-- **duration_sec**: 8-12 seconds (manim), 5-8 seconds (logo)
+- **type**: "manim", "product", or "logo"
+- **duration_sec**: 8-12 seconds (manim), 6-8 seconds (product), 5-8 seconds (logo)
 - **concept**: brief description
 - **png_path**: (MANDATORY for "manim" type) - must be EXACTLY one of the paths from PNG LIBRARY above
+- **product_name**: (OPTIONAL for "product" type) - name of the product to display (e.g., drug name)
 - **tagline**: (OPTIONAL for "logo" type) - short company tagline/message (e.g., "Innovating Healthcare Solutions")
 - **narration_key_points**: 2-3 bullet points for narrator
 
@@ -222,7 +229,10 @@ Each scene needs:
 - ALL "manim" scenes MUST include "png_path" field
 - DO NOT use "visual_elements" field - the PNG is the complete visual
 - DO NOT describe shapes, arrows, or custom graphics - only use provided PNGs
-- ONLY the final scene should use "logo" type
+- Scene order: Manim scenes → Product scene → Logo scene
+- Second-to-last scene should be "product" type
+- Final scene should be "logo" type
+- Product scene automatically uses uploaded product image
 - Logo scene automatically uses the uploaded company logo
 
 ---
@@ -259,12 +269,22 @@ Each scene needs:
     }},
     {{
       "scene_id": 3,
+      "type": "product",
+      "duration_sec": 7,
+      "concept": "Product showcase",
+      "product_name": "DrugName™",
+      "narration_key_points": [
+        "Available in convenient dosing options",
+        "Speak with your medical representative"
+      ]
+    }},
+    {{
+      "scene_id": 4,
       "type": "logo",
       "duration_sec": 6,
       "concept": "Company branding closure",
       "tagline": "Innovating Healthcare Solutions",
       "narration_key_points": [
-        "Contact your medical representative",
         "Full prescribing information available"
       ]
     }}

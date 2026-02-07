@@ -645,7 +645,6 @@ async def create_doctor_video(
     tone: str = Form("scientific and professional"),
     quality: str = Form("low"),
     user_id: Optional[str] = Form(None),
-    video_id: Optional[str] = Form(None),
     documents: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings
     logo: Optional[UploadFile] = File(None),
     images: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings
@@ -656,8 +655,7 @@ async def create_doctor_video(
     from app.doctor_ad_stages.stage5_doctor_render import render_doctor_video
 
     pipeline_start = time.time()
-    if not video_id:
-        video_id = generate_video_id()
+    video_id = generate_video_id()
     
     # ✅ Filter out strings using duck typing
     docs = []
@@ -711,13 +709,24 @@ async def create_doctor_video(
             f.write(await valid_logo.read())
         logger.info(f"Saved logo: {logo_path}")
 
+    # Save product image if provided (first image is used as product image)
+    product_image_path = None
+    if valid_images:
+        product_dir = VIDEOS_DIR / video_id / "product"
+        product_dir.mkdir(parents=True, exist_ok=True)
+        product_image_path = product_dir / valid_images[0].filename
+        with open(product_image_path, "wb") as f:
+            f.write(await valid_images[0].read())
+        logger.info(f"Saved product image: {product_image_path}")
+
     scenes_data = generate_doctor_scenes(
         drug_name=drug_name,
         indication=indication,
         moa_summary=moa_summary,
         clinical_data=clinical_data,
         logo_path=str(logo_path) if logo_path else None,
-        image_paths=[img.filename for img in valid_images],
+        product_image_path=str(product_image_path) if product_image_path else None,
+        image_paths=[img.filename for img in valid_images[1:]] if len(valid_images) > 1 else [],
         reference_docs=extract_documents_text(valid_docs) if valid_docs else None
     )
 
@@ -727,14 +736,25 @@ async def create_doctor_video(
     if not scenes:
         raise HTTPException(500, "No scenes generated")
 
-    # Handle logo scene info
-    logo_info = run_stage3_pexels(scenes_data, video_id, str(logo_path) if logo_path else None)
+    # Handle product and logo scene info
+    scene_info = run_stage3_pexels(
+        scenes_data, 
+        video_id, 
+        str(logo_path) if logo_path else None,
+        str(product_image_path) if product_image_path else None
+    )
 
-    # Inject logo path into logo scenes
+    # Inject paths into product and logo scenes
     for scene in scenes:
-        if scene.get("type") == "logo":
-            scene_id = scene["scene_id"]
-            info = logo_info.get(scene_id, {})
+        scene_id = scene["scene_id"]
+        info = scene_info.get(scene_id, {})
+        
+        if scene.get("type") == "product":
+            if info.get("product_image_path"):
+                scene["product_image_path"] = info["product_image_path"]
+            scene["product_name"] = info.get("product_name", drug_name)
+        
+        elif scene.get("type") == "logo":
             if info.get("logo_path"):
                 scene["logo_path"] = info["logo_path"]
             scene["tagline"] = info.get("tagline", "")

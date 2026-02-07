@@ -1,5 +1,5 @@
 """
-Stage 2 Doctor Ad: Generate Manim code for all scenes (including logo closing scene).
+Stage 2 Doctor Ad: Generate Manim code for all scenes (including product and logo closing scenes).
 """
 import json
 from pathlib import Path
@@ -107,11 +107,84 @@ class Scene{scene_id}(Scene):
     return code
 
 
+def generate_product_scene_code(scene: dict) -> str:
+    """
+    Generate Manim code for product scene with product image.
+    """
+    scene_id = scene.get("scene_id", 1)
+    product_image_path = scene.get("product_image_path", "")
+    product_name = scene.get("product_name", "Product")
+    
+    code = f'''from manim import *
+from manim import config
+from pathlib import Path
+
+class Scene{scene_id}(Scene):
+    def construct(self):
+        # Set white background
+        self.camera.background_color = WHITE
+        
+        # Define custom colors
+        medical_blue = "#2E86AB"
+        
+'''
+    
+    if product_image_path:
+        code += f'''        # Load product image
+        try:
+            product = ImageMobject("{product_image_path}")
+            product.height = config.frame_height * 0.5
+            product.move_to(ORIGIN)
+            
+            # Add product name
+            product_text = Text("{product_name}", font="Sans", font_size=40, color=BLACK)
+            product_text.to_edge(UP, buff=0.5)
+            
+            self.play(Write(product_text), run_time=0.8)
+            self.wait(0.3)
+            self.play(FadeIn(product, scale=0.9), run_time=1.2)
+            self.wait(2.5)
+            self.play(FadeOut(product_text), FadeOut(product), run_time=1)
+            
+        except Exception as e:
+            # Fallback: Show text if image fails
+            text = Text("{product_name}", font="Sans", font_size=48, color=BLACK)
+            text.move_to(ORIGIN)
+            subtext = Text("Available Now", font="Sans", font_size=32, color=medical_blue)
+            subtext.next_to(text, DOWN, buff=0.8)
+            
+            self.play(Write(text), run_time=1)
+            self.wait(0.5)
+            self.play(Write(subtext), run_time=0.8)
+            self.wait(2)
+            self.play(FadeOut(text), FadeOut(subtext), run_time=1)
+'''
+    else:
+        # No product image provided - show product name text
+        code += f'''        text = Text("{product_name}", font="Sans", font_size=48, color=BLACK)
+        text.move_to(ORIGIN)
+        subtext = Text("Available Now", font="Sans", font_size=32, color=medical_blue)
+        subtext.next_to(text, DOWN, buff=0.8)
+        
+        self.play(Write(text), run_time=1)
+        self.wait(0.5)
+        self.play(Write(subtext), run_time=0.8)
+        self.wait(2)
+        self.play(FadeOut(text), FadeOut(subtext), run_time=1)
+'''
+    
+    code += '''        self.wait(0.3)
+'''
+    
+    return code
+
+
 def generate_manim_scene(scene: dict, retry_count: int = 0, max_retries: int = 2) -> tuple[int, str]:
     """
     Generate Manim code with syntax validation only (runtime deferred to render).
     
     For logo scenes, generates simple logo display code.
+    For product scenes, generates product image display code.
     For other scenes, uses LLM to generate code.
     
     Flow:
@@ -126,6 +199,12 @@ def generate_manim_scene(scene: dict, retry_count: int = 0, max_retries: int = 2
     if scene_type == "logo":
         logger.info(f"Scene {scene_id}: Generating logo scene code", extra={'progress': True})
         manim_code = generate_logo_scene_code(scene)
+        return (scene_id, manim_code)
+    
+    # Handle product scenes specially
+    if scene_type == "product":
+        logger.info(f"Scene {scene_id}: Generating product scene code", extra={'progress': True})
+        manim_code = generate_product_scene_code(scene)
         return (scene_id, manim_code)
     
     # Regular manim scene generation
