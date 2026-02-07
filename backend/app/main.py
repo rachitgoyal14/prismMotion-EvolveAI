@@ -6,10 +6,11 @@ import json
 from pathlib import Path
 import time
 import os
-import json
 import shutil
 import uuid
-from typing import Annotated
+from typing import Annotated, Optional
+import mimetypes
+import logging
 
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
@@ -26,12 +27,10 @@ from fastapi import (
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import os
 import io
 
 # Logging setup
 from app.utils.logging_config import setup_logging, StageLogger
-import logging
 
 setup_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,7 +42,6 @@ from app.utils.documents import extract_documents_text
 
 # Compliance pipeline
 from app.pipelines.compliance import run_compliance_pipeline
-
 
 # Remotion pipeline
 from app.stages.stage1_scenes import generate_scenes
@@ -75,7 +73,6 @@ app.add_middleware(
 
 VIDEOS_DIR = OUTPUTS_DIR / "videos"
 
-
 @app.on_event("startup")
 async def startup_event():
     try:
@@ -84,7 +81,6 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"DB init failed: {e}")
 
-
 @app.on_event("shutdown")
 async def shutdown_event():
     try:
@@ -92,15 +88,14 @@ async def shutdown_event():
     except Exception:
         pass
 
-
+# Pydantic models for documentation
 class CreateRequest(BaseModel):
-    """Pexels + Remotion video config (sent as JSON string in form)."""
+    """Pexels + Remotion video config."""
     video_type: str = "product_ad"
     topic: str
     brand_name: str = ""
     persona: str = "professional narrator"
     tone: str = "clear and reassuring"
-
 
 class CreateMoARequest(BaseModel):
     """Mechanism of Action video using Manim."""
@@ -142,6 +137,14 @@ class CreateSocialMediaRequest(BaseModel):
     quality: str = "high"
 
 
+class CreateSocialMediaRemotionRequest(BaseModel):
+    """Social media short-form video (Instagram Reels, TikTok) using Remotion + Pexels."""
+    topic: str
+    brand_name: str = ""
+    persona: str = "friendly brand narrator"
+    tone: str = "engaging and conversational"
+
+
 class CreateVideoForm:
     def __init__(
         self,
@@ -166,33 +169,39 @@ class CreateVideoForm:
 
 
 # ---------------------------------------------------------------------
-# File helpers
+# File helpers - FIXED
 # ---------------------------------------------------------------------
 
 ALLOWED_TYPES = {
     "image/png",
-    "image/jpeg",
+    "image/jpeg", 
     "image/jpg",
     "image/webp",
 }
 
-
+def filter_valid_files(files: list[UploadFile]) -> list[UploadFile]:
+    """Filter out invalid files (no filename or no content_type)"""
+    return [
+        f for f in files 
+        if f.filename and f.content_type and f.content_type in ALLOWED_TYPES
+    ]
 
 async def save_files(files: list[UploadFile] | None, target_dir: Path):
     if not files:
         return []
 
     saved_paths = []
-
+    
     for file in files:
-
-        if not file.filename:
+        # Skip ANY invalid file completely
+        if not file.filename or not file.content_type:
+            logger.warning(f"Skipping invalid file: {file.filename}, type: {file.content_type}")
             continue
-
+            
         if file.content_type not in ALLOWED_TYPES:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid file type: {file.content_type}",
+                detail=f"Invalid file type: {file.content_type}. Allowed: {ALLOWED_TYPES}"
             )
 
         ext = Path(file.filename).suffix
@@ -206,8 +215,9 @@ async def save_files(files: list[UploadFile] | None, target_dir: Path):
 
     return saved_paths
 
-
-
+# ---------------------------------------------------------------------
+# ENDPOINTS - ALL FIXED
+# ---------------------------------------------------------------------
 
 @app.post("/create")
 async def create_video(
@@ -216,46 +226,35 @@ async def create_video(
     brand_name: str = Form(""),
     persona: str = Form("professional narrator"),
     tone: str = Form("clear and reassuring"),
-    logo: UploadFile | None = File(default=None),
-    image: UploadFile | None = File(default=None),
-    user_id: str | None = Form(None),
+    logo: Optional[UploadFile] = File(None),
+    image: Optional[UploadFile] = File(None),
+    documents: list[UploadFile] = File(default=[]),
+    user_id: Optional[str] = Form(None),
 ):
-
-    
-
-    body = CreateRequest(
-        video_type=video_type,
-        topic=topic,
-        brand_name=brand_name,
-        persona=persona,
-        tone=tone,
-    )
-
-    logos = [logo] if logo else []
-    images = [image] if image else []
-    logger.info(f"Logos: {logos}")
-    logger.info(f"Images: {images}")
-
-
-
     pipeline_start = time.time()
     video_id = generate_video_id()
 
-    # Ensure user + session + video record in DB
+    # ✅ FILTER FILES FIRST - BULLETPROOF
+    logos = [logo] if logo and logo.filename and logo.content_type else []
+    images = [image] if image and image.filename and logo.content_type else []
+    valid_docs = [doc for doc in documents if doc.filename and doc.content_type]
+    
+    logger.info(f"Valid logos: {len(logos)}, images: {len(images)}, docs: {len(valid_docs)}")
+
+    # DB setup
     try:
         uid = await db.ensure_user(user_id)
-        session_id = await db.create_session(uid, video_id, status="processing", metadata={"topic": topic, "video_type": video_type})
+        session_id = await db.create_session(
+            uid, video_id, status="processing", 
+            metadata={"topic": topic, "video_type": video_type}
+        )
         await db.create_video_record(video_id, session_id, path=None, state="processing")
     except Exception as e:
         logger.warning(f"DB record creation failed: {e}")
 
-    logger.info(
-        f"Starting Remotion pipeline - Video ID: {video_id}",
-        extra={"stage": "PIPELINE START"},
-    )
+    logger.info(f"Starting Remotion pipeline - Video ID: {video_id}")
 
-    # ---------------- Save assets ----------------
-
+    # Save assets
     assets_dir = VIDEOS_DIR / video_id / "assets"
     logos_dir = assets_dir / "logos"
     images_dir = assets_dir / "images"
@@ -266,28 +265,27 @@ async def create_video(
     logo_paths = await save_files(logos, logos_dir)
     image_paths = await save_files(images, images_dir)
 
-    logger.info(
-        f"Saved {len(logo_paths)} logos and {len(image_paths)} images",
-        extra={"stage": "ASSET UPLOAD"},
-    )
+    logger.info(f"Saved {len(logo_paths)} logos and {len(image_paths)} images")
 
     try:
-        # Stage 1
+        # Stage 1 - USE valid_docs
         scenes_data = generate_scenes(
-            topic=body.topic,
-            video_type=body.video_type,
-            brand_name=body.brand_name or "Our Brand",
+            topic=topic,
+            video_type=video_type,
+            brand_name=brand_name or "Our Brand",
+            reference_docs=extract_documents_text(valid_docs) if valid_docs else "",
         )
 
         scenes = scenes_data.get("scenes", [])
         if not scenes:
             raise HTTPException(500, "No scenes generated")
 
-        # Script
+        # Script - USE valid_docs
         script = generate_script(
             scenes,
-            persona=body.persona,
-            tone=body.tone,
+            persona=persona,
+            tone=tone,
+            reference_docs=extract_documents_text(valid_docs) if valid_docs else None,
         )
 
         # Stage 2
@@ -295,10 +293,7 @@ async def create_video(
             scenes_data,
             script,
             video_id,
-            assets={
-                "logos": logo_paths,
-                "images": image_paths,
-            },
+            assets={"logos": logo_paths, "images": image_paths},
         )
 
         try:
@@ -307,146 +302,130 @@ async def create_video(
             logger.warning(f"Animation skipped: {e}")
 
         scene_ids = [s["scene_id"] for s in scenes]
-
-        tts_generate(
-            script=script,
-            video_id=video_id,
-            scene_ids=scene_ids,
-        )
-
+        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids)
         final_path = render_remotion(video_id)
 
-        # Update DB record to complete
+        # Update DB
         try:
             await db.update_video_state(video_id, state="complete", path=str(final_path))
         except Exception as e:
             logger.warning(f"DB update failed: {e}")
-
+        
         total_time = time.time() - pipeline_start
-
         return {
             "status": "complete",
             "video_id": video_id,
-            "video_type": body.video_type,
+            "video_type": video_type,
             "video_path": str(final_path),
-            "assets": {
-                "logos": logo_paths,
-                "images": image_paths,
-            },
+            "assets": {"logos": logo_paths, "images": image_paths},
             "elapsed_seconds": round(total_time, 1),
         }
 
     except Exception as e:
-        logger.error(
-            f"Pipeline failed: {e}",
-            extra={"stage": "PIPELINE ERROR"},
-        )
+        logger.error(f"Pipeline failed: {e}", extra={"stage": "PIPELINE ERROR"})
         raise HTTPException(500, f"Pipeline failed: {e}")
-
-
 
 @app.post("/create-compliance")
 async def create_compliance_video(
-    payload: str = Form(...),
+    video_type: str = Form("compliance_video"),
+    prompt: str = Form(...),
+    brand_name: str = Form(""),
+    persona: str = Form("compliance officer"),
+    tone: str = Form("formal and precise"),
+    user_id: Optional[str] = Form(None),
     documents: list[UploadFile] = File(default=[]),
-    logo: UploadFile = File(default=None),
+    logo: Optional[UploadFile] = File(None),
     images: list[UploadFile] = File(default=[]),
 ):
-    body = CreateComplianceRequest(**json.loads(payload))
+    # ✅ FILTER FILES FIRST
+    valid_docs = filter_valid_files(documents)
+    valid_logo = logo if logo and logo.filename and logo.content_type else None
+    valid_images = filter_valid_files(images)
+    
+    logger.info(f"Compliance: {len(valid_docs)} docs, logo: {valid_logo is not None}, {len(valid_images)} images")
 
-    result = run_compliance_pipeline(
-        payload=body.dict(),
-        documents=documents,
-        logo=logo,
-        images=images,
-    )
-
-    return {
-        "status": "ok",
-        **result,
+    payload = {
+        "video_type": video_type,
+        "prompt": prompt,
+        "brand_name": brand_name,
+        "persona": persona,
+        "tone": tone,
     }
 
+    result = run_compliance_pipeline(
+        payload=payload,
+        documents=valid_docs,
+        logo=valid_logo,
+        images=valid_images,
+    )
+
+    return {"status": "ok", **result}
 
 @app.post("/create-moa")
-async def create_moa_video(body: CreateMoARequest, user_id: str | None = None):
+async def create_moa_video(
+    drug_name: str = Form(...),
+    condition: str = Form(...),
+    target_audience: str = Form("healthcare professionals"),
+    persona: str = Form("professional medical narrator"),
+    tone: str = Form("clear and educational"),
+    quality: str = Form("high"),
+    user_id: Optional[str] = Form(None),
+    documents: list[UploadFile] = File(default=[]),
+    logo: Optional[UploadFile] = File(None),
+    images: list[UploadFile] = File(default=[]),
+):
     pipeline_start = time.time()
     video_id = generate_video_id()
 
-    logger.info(
-        f"Starting MoA pipeline - Video ID: {video_id}",
-        extra={"stage": "PIPELINE START"},
-    )
+    # ✅ FILTER FILES FIRST
+    valid_docs = filter_valid_files(documents)
+    valid_logo = logo if logo and logo.filename and logo.content_type else None
+    valid_images = filter_valid_files(images)
+
+    logger.info(f"MoA: {len(valid_docs)} docs, logo: {valid_logo is not None}, {len(valid_images)} images")
 
     try:
-        # create user/session/video tracking
-        try:
-            uid = await db.ensure_user(user_id)
-            session_id = await db.create_session(uid, video_id, status="processing", metadata={"drug_name": body.drug_name, "condition": body.condition})
-            await db.create_video_record(video_id, session_id, path=None, state="processing")
-        except Exception as e:
-            logger.warning(f"DB record creation failed: {e}")
+        uid = await db.ensure_user(user_id)
+        session_id = await db.create_session(
+            uid, video_id, status="processing", 
+            metadata={"drug_name": drug_name, "condition": condition}
+        )
+        await db.create_video_record(video_id, session_id, path=None, state="processing")
+    except Exception as e:
+        logger.warning(f"DB record creation failed: {e}")
 
         stage_logger = StageLogger("MoA Scene Planning")
         stage_logger.start()
 
         scenes_data = generate_moa_scenes(
-            drug_name=body.drug_name,
-            condition=body.condition,
-            target_audience=body.target_audience,
+            drug_name=drug_name,
+            condition=condition,
+            target_audience=target_audience,
+            reference_docs=extract_documents_text(valid_docs) if valid_docs else None,
+            logo_path=valid_logo.filename if valid_logo else None,
+            image_paths=[img.filename for img in valid_images],
         )
 
         scenes = scenes_data.get("scenes", [])
-        stage_logger.complete(
-            f"{len(scenes)} MoA scenes planned"
-        )
+        stage_logger.complete(f"{len(scenes)} MoA scenes planned")
 
         if not scenes:
-            raise HTTPException(
-                status_code=500,
-                detail="No MoA scenes generated",
-            )
+            raise HTTPException(500, "No MoA scenes generated")
 
         stage_logger = StageLogger("Script Writing")
         stage_logger.start()
 
-        script = generate_script(
-            scenes,
-            persona=body.persona,
-            tone=body.tone,
-        )
+        script = generate_script(scenes, persona=persona, tone=tone)
+        stage_logger.complete(f"{len(script)} scripts generated")
 
-        stage_logger.complete(
-            f"{len(script)} scripts generated"
-        )
-
-        run_stage2_moa(
-            scenes_data,
-            script,
-            video_id,
-            max_workers=4,
-        )
-
+        run_stage2_moa(scenes_data, script, video_id, max_workers=4)
         scene_ids = [s["scene_id"] for s in scenes]
+        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids, max_workers=5)
+        final_path = render_moa_video(video_id, quality=quality)
 
-        tts_generate(
-            script=script,
-            video_id=video_id,
-            scene_ids=scene_ids,
-            max_workers=5,
-        )
-
-        final_path = render_moa_video(
-            video_id,
-            quality=body.quality,
-        )
-
-        try:
-            await db.update_video_state(video_id, state="complete", path=str(final_path))
-        except Exception as e:
-            logger.warning(f"DB update failed: {e}")
-
+        await db.update_video_state(video_id, state="complete", path=str(final_path))
+        
         total_time = time.time() - pipeline_start
-
         return {
             "status": "complete",
             "video_id": video_id,
@@ -456,125 +435,114 @@ async def create_moa_video(body: CreateMoARequest, user_id: str | None = None):
         }
 
     except Exception as e:
-        logger.error(
-            f"MoA pipeline failed: {e}",
-            extra={"stage": "PIPELINE ERROR"},
-        )
-        raise HTTPException(
-            status_code=500,
-            detail=f"MoA render failed: {e}",
-        )
+        logger.error(f"MoA pipeline failed: {e}")
+        raise HTTPException(500, f"MoA render failed: {e}")
 
 @app.post("/create-doctor")
-async def create_doctor_video(body: CreateDoctorRequest, user_id: str | None = None, video_id: str | None = None):
-    """
-    Generate doctor-facing HCP promotional video.
-    Mix of Manim (scientific) + 1 Pexels (closing visual).
-    """
+async def create_doctor_video(
+    drug_name: str = Form(...),
+    indication: str = Form(...),
+    moa_summary: str = Form(""),
+    clinical_data: str = Form(""),
+    pexels_query: str = Form("doctor consultation"),
+    persona: str = Form("professional medical narrator"),
+    tone: str = Form("scientific and professional"),
+    quality: str = Form("high"),
+    user_id: Optional[str] = Form(None),
+    video_id: Optional[str] = Form(None),
+    documents: list[UploadFile] = File(default=[]),
+    logo: Optional[UploadFile] = File(None),
+    images: list[UploadFile] = File(default=[]),
+):
     from app.doctor_ad_stages.stage1_doctor_scenes import generate_doctor_scenes
     from app.doctor_ad_stages.stage2_doctor_manim import run_stage2_doctor
     from app.doctor_ad_stages.stage3_pexels_fetch import run_stage3_pexels
     from app.doctor_ad_stages.stage5_doctor_render import render_doctor_video
-    
+
     pipeline_start = time.time()
-    
     if not video_id:
         video_id = generate_video_id()
-    
-    logger.info(
-        f"Starting Doctor Ad pipeline - Video ID: {video_id}",
-        extra={"stage": "PIPELINE START"}
-    )
-    
-    try:
-        # DB tracking
-        try:
-            uid = await db.ensure_user(user_id)
-            session_id = await db.create_session(
-                uid, video_id, status="processing",
-                metadata={
-                    "drug_name": body.drug_name,
-                    "indication": body.indication,
-                    "video_type": "doctor_ad"
-                }
-            )
-            await db.create_video_record(video_id, session_id, path=None, state="processing")
-        except Exception as e:
-            logger.warning(f"DB record creation failed: {e}")
-        
-        # Stage 1: Scene planning
-        # Stage 1: Scene planning
-        stage_logger = StageLogger("Doctor Scene Planning")
-        stage_logger.start()
-        
-        scenes_data = generate_doctor_scenes(
-            drug_name=body.drug_name,
-            indication=body.indication,
-            moa_summary=body.moa_summary,
-            clinical_data=body.clinical_data,
-            pexels_query=body.pexels_query
-        )
-        
-        scenes = scenes_data.get("scenes", [])
-        stage_logger.complete(f"{len(scenes)} scenes planned")
-        
-        if not scenes:
-            raise HTTPException(500, "No scenes generated")
-        
-        # Stage 3: Fetch Pexels EARLY (for injection into scene data)
-        pexels_media = run_stage3_pexels(scenes_data, video_id)
-        
-        # Inject Pexels image path into closing scene and change type to 'manim'
-        for scene in scenes:
-            if scene.get("type") == "pexels":
-                scene_id = scene["scene_id"]
-                media = pexels_media.get(scene_id, {})
-                image_path = media.get("image", {}).get("local_path")
-                if image_path:
-                    scene["pexels_image_path"] = image_path
-                    scene["type"] = "manim"  # Treat as Manim now
-                else:
-                    logger.warning(f"Scene {scene_id}: No Pexels image, falling back to plain Manim")
 
-        # Stage: Script (reuse)
-        stage_logger = StageLogger("Script Writing")
-        stage_logger.start()
-        
-        script = generate_script(scenes, persona=body.persona, tone=body.tone)
-        
-        stage_logger.complete(f"{len(script)} scripts generated")
-        
-        # Stage 2: Manim code generation (now for ALL scenes)
-        run_stage2_doctor(scenes_data, script, video_id, max_workers=3)
-        
-        # Stage 4: TTS (reuse)
-        scene_ids = [s["scene_id"] for s in scenes]
-        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids, max_workers=5)
-        
-        # Stage 5: Render (all as Manim)
-        final_path = render_doctor_video(video_id, scenes_data, quality=body.quality)
-        
-        # Update DB
-        try:
-            await db.update_video_state(video_id, state="complete", path=str(final_path))
-        except Exception as e:
-            logger.warning(f"DB update failed: {e}")
-        
-        total_time = time.time() - pipeline_start
-        
-        return {
-            "status": "complete",
-            "video_id": video_id,
-            "video_type": "doctor_ad",
-            "drug_name": body.drug_name,
-            "video_path": str(final_path),
-            "elapsed_seconds": round(total_time, 1),
-            "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s"
-        }
-        
+    # ✅ FILTER FILES FIRST
+    valid_docs = filter_valid_files(documents)
+    valid_logo = logo if logo and logo.filename and logo.content_type else None
+    valid_images = filter_valid_files(images)
+
+    logger.info(f"Doctor ad: {len(valid_docs)} docs, logo: {valid_logo is not None}, {len(valid_images)} images")
+
+    try:
+        uid = await db.ensure_user(user_id)
+        session_id = await db.create_session(
+            uid, video_id, status="processing",
+            metadata={
+                "drug_name": drug_name,
+                "indication": indication,
+                "video_type": "doctor_ad",
+            }
+        )
+        await db.create_video_record(video_id, session_id, path=None, state="processing")
     except Exception as e:
-        logger.error(f"Doctor Ad pipeline failed: {e}", extra={"stage": "PIPELINE ERROR"})
-        raise HTTPException(500, f"Doctor Ad render failed: {e}")
+        logger.warning(f"DB record creation failed: {e}")
+
+    stage_logger = StageLogger("Doctor Scene Planning")
+    stage_logger.start()
+
+    scenes_data = generate_doctor_scenes(
+        drug_name=drug_name,
+        indication=indication,
+        moa_summary=moa_summary,
+        clinical_data=clinical_data,
+        pexels_query=pexels_query,
+        logo_path=valid_logo.filename if valid_logo else None,
+        image_paths=[img.filename for img in valid_images],
+        reference_docs=extract_documents_text(valid_docs) if valid_docs else None
+    )
+
+    scenes = scenes_data.get("scenes", [])
+    stage_logger.complete(f"{len(scenes)} scenes planned")
+
+    if not scenes:
+        raise HTTPException(500, "No scenes generated")
+
+    pexels_media = run_stage3_pexels(scenes_data, video_id)
+
+    for scene in scenes:
+        if scene.get("type") == "pexels":
+            scene_id = scene["scene_id"]
+            media = pexels_media.get(scene_id, {})
+            image_path = media.get("image", {}).get("local_path")
+            if image_path:
+                scene["pexels_image_path"] = image_path
+                scene["type"] = "manim"
+            else:
+                logger.warning(f"Scene {scene_id}: No Pexels image")
+
+    stage_logger = StageLogger("Script Writing")
+    stage_logger.start()
+
+    script = generate_script(
+        scenes, persona=persona, tone=tone,
+        reference_docs=extract_documents_text(valid_docs) if valid_docs else None
+    )
+    stage_logger.complete(f"{len(script)} scripts generated")
+
+    run_stage2_doctor(scenes_data, script, video_id, max_workers=3)
+    scene_ids = [s["scene_id"] for s in scenes]
+    tts_generate(script=script, video_id=video_id, scene_ids=scene_ids, max_workers=5)
+    final_path = render_doctor_video(video_id, scenes_data, quality=quality)
+
+    await db.update_video_state(video_id, state="complete", path=str(final_path))
+    
+    total_time = time.time() - pipeline_start
+    return {
+        "status": "complete",
+        "video_id": video_id,
+        "video_type": "doctor_ad",
+        "drug_name": drug_name,
+        "video_path": str(final_path),
+        "elapsed_seconds": round(total_time, 1),
+        "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s"
+    }
 
 @app.post("/create-sm")
 async def create_sm_video(body: CreateSocialMediaRequest, user_id: str | None = None):
@@ -689,37 +657,133 @@ async def create_sm_video(body: CreateSocialMediaRequest, user_id: str | None = 
         raise HTTPException(500, f"Social Media render failed: {e}")
 
 
+@app.post("/create-sm-rm")
+async def create_sm_remotion_video(
+    topic: str = Form(...),
+    brand_name: str = Form(""),
+    persona: str = Form("friendly brand narrator"),
+    tone: str = Form("engaging and conversational"),
+    logo: Optional[UploadFile] = File(None),
+    image: Optional[UploadFile] = File(None),
+    user_id: Optional[str] = Form(None),
+):
+    """
+    Generate social media short-form video using Remotion pipeline.
+    Optimized for Instagram Reels, TikTok, YouTube Shorts.
+    """
+    pipeline_start = time.time()
+    video_id = generate_video_id()
+
+    # Filter files
+    logos = [logo] if logo and logo.filename and logo.content_type else []
+    images = [image] if image and image.filename and image.content_type else []
+    
+    logger.info(f"Starting Social Media Remotion pipeline - Video ID: {video_id}")
+
+    # DB setup
+    try:
+        uid = await db.ensure_user(user_id)
+        session_id = await db.create_session(
+            uid, video_id, status="processing",
+            metadata={"topic": topic, "video_type": "social_media_remotion"}
+        )
+        await db.create_video_record(video_id, session_id, path=None, state="processing")
+    except Exception as e:
+        logger.warning(f"DB record creation failed: {e}")
+
+    # Save assets
+    assets_dir = VIDEOS_DIR / video_id / "assets"
+    logos_dir = assets_dir / "logos"
+    images_dir = assets_dir / "images"
+
+    logos_dir.mkdir(parents=True, exist_ok=True)
+    images_dir.mkdir(parents=True, exist_ok=True)
+
+    logo_paths = await save_files(logos, logos_dir)
+    image_paths = await save_files(images, images_dir)
+
+    logger.info(f"Saved {len(logo_paths)} logos and {len(image_paths)} images")
+
+    try:
+        # Stage 1: Generate scenes
+        scenes_data = generate_scenes(
+            topic=topic,
+            video_type="product_ad",
+            brand_name=brand_name or "Our Brand",
+        )
+
+        scenes = scenes_data.get("scenes", [])
+        if not scenes:
+            raise HTTPException(500, "No scenes generated")
+
+        # Stage 2: Generate script
+        script = generate_script(
+            scenes,
+            persona=persona,
+            tone=tone,
+        )
+
+        # Stage 3: Remotion
+        run_stage2(
+            scenes_data,
+            script,
+            video_id,
+            assets={"logos": logo_paths, "images": image_paths},
+        )
+
+        # Stage 4: Try animations
+        try:
+            generate_animations(video_id)
+        except Exception as e:
+            logger.warning(f"Animation skipped: {e}")
+
+        # Stage 5: TTS
+        scene_ids = [s["scene_id"] for s in scenes]
+        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids)
+
+        # Stage 6: Render
+        final_path = render_remotion(video_id)
+
+        # Update DB
+        try:
+            await db.update_video_state(video_id, state="complete", path=str(final_path))
+        except Exception as e:
+            logger.warning(f"DB update failed: {e}")
+
+        total_time = time.time() - pipeline_start
+
+        return {
+            "status": "complete",
+            "video_id": video_id,
+            "video_type": "social_media_remotion",
+            "video_path": str(final_path),
+            "elapsed_seconds": round(total_time, 1),
+            "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s",
+            "platform_hint": "Instagram Reels, TikTok, YouTube Shorts"
+        }
+
+    except Exception as e:
+        logger.error(f"Social Media Remotion pipeline failed: {e}", extra={"stage": "PIPELINE ERROR"})
+        raise HTTPException(500, f"Social Media Remotion render failed: {e}")
+
+
 @app.get("/video/{video_id}")
 async def get_video(video_id: str, request: Request):
     """Stream final video with range request support."""
-    # Try different video types
-    video_path = VIDEOS_DIR / video_id / "final.mp4"
-    
-    if not video_path.exists():
-        video_path = VIDEOS_DIR / video_id / "final_moa.mp4"
-    
-    if not video_path.exists():
-        video_path = VIDEOS_DIR / video_id / "final_doctor.mp4"  
-    
-    if not video_path.exists():
-        video_path = VIDEOS_DIR / video_id / "final_sm.mp4"
-    
-    if not video_path.exists():
-        raise HTTPException(404, "Video not found")
-    
-    return FileResponse(video_path, media_type="video/mp4")
-
+    for filename in ["final.mp4", "final_moa.mp4", "final_doctor.mp4", "final_sm.mp4"]:
+        video_path = VIDEOS_DIR / video_id / filename
+        if video_path.exists():
+            return FileResponse(video_path, media_type="video/mp4")
+    raise HTTPException(404, "Video not found")
 
 
 @app.get("/generate-user-id")
 def generate_user_id():
     """Generate a user ID for tracking multiple video generations."""
-    user_id = str(uuid.uuid4())
     return {
-        "user_id": user_id,
-        "message": "Pass this user_id to /create or /create-moa endpoints. A new video_id will be generated for each video."
+        "user_id": str(uuid.uuid4()),
+        "message": "Pass this user_id to /create or /create-moa endpoints."
     }
-
 
 @app.get("/")
 def root():
@@ -748,11 +812,20 @@ def root():
                 "description": "Doctor-facing HCP promotional videos",
                 "uses": "Manim animations + Pexels + TTS"
             },
-            "social_media": {
+            "social_media_manim": {
                 "endpoint": "/create-sm",
-                "description": "Short-form social media videos (Instagram Reels, TikTok, YouTube Shorts)",
+                "description": "Short-form social media videos (Instagram Reels, TikTok, YouTube Shorts) - Manim",
                 "uses": "Manim animations + Pexels + TTS"
+            },
+            "social_media_remotion": {
+                "endpoint": "/create-sm-rm",
+                "description": "Short-form social media videos (Instagram Reels, TikTok, YouTube Shorts) - Remotion",
+                "uses": "Remotion animations + Pexels + TTS"
+            },
+            "compliance": {
+                "endpoint": "/create-compliance",
+                "description": "Compliance videos with reference document adherence",
+                "uses": "Remotion with strict validation"
             }
         }
     }
-
