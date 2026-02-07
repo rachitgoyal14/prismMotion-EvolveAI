@@ -1,11 +1,8 @@
 import json
-from pathlib import Path
-from tempfile import template
+from string import Template
 
 from app.paths import PROMPTS_DIR, OUTPUTS_DIR
 from app.utils.llm import call_llm
-from string import Template
-
 
 
 def generate_scenes(
@@ -20,7 +17,6 @@ def generate_scenes(
     """Plan pharma/compliance video scenes."""
 
     prompt_path = PROMPTS_DIR / "compliance_prompts" / "scene_planner.txt"
-
     template = Template(prompt_path.read_text(encoding="utf-8"))
 
     prompt = template.substitute(
@@ -28,19 +24,14 @@ def generate_scenes(
         brand_name=brand_name or "Our Brand",
         topic=topic,
         reference_docs=(reference_docs[:6000] if reference_docs else ""),
+        asset_context=asset_context or "",
     )
-
-
 
     if persona or tone:
         prompt += f"\n\nPERSONA: {persona}\nTONE: {tone}"
 
-    if asset_context:
-        prompt += "\n\n" + asset_context
-
     output = call_llm(prompt)
 
-    # 👇 make it "just work" even if LLM adds junk text
     try:
         data = json.loads(output)
     except json.JSONDecodeError:
