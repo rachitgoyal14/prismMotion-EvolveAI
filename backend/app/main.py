@@ -191,6 +191,15 @@ ALLOWED_DOC_TYPES = {
 }
 
 
+"""
+Fix for filter_valid_files function to handle empty string entries from FastAPI.
+
+ISSUE: When no files are uploaded to FastAPI endpoints with File(default=[]),
+FastAPI passes [""] - a list with one empty string - instead of an empty list.
+
+SOLUTION: Pre-filter the list to remove empty strings and None values before processing.
+"""
+
 def filter_valid_files(
     files: list[Union[UploadFile, str]] | None,
     allowed_types: set = None
@@ -208,10 +217,19 @@ def filter_valid_files(
     if not files or not isinstance(files, list):
         return valid
     
+    # ✅ FIX: Filter out empty strings and None values FIRST
+    # FastAPI sends [""] when no files uploaded with File(default=[])
+    files = [f for f in files if f != "" and f is not None]
+    
+    # Early return if nothing left after filtering
+    if not files:
+        logger.info(f"filter_valid_files: No valid files after filtering empty entries")
+        return valid
+    
     logger.info(f"filter_valid_files: Processing {len(files)} items")
     
     for i, f in enumerate(files):
-        # Skip strings
+        # Skip strings (shouldn't happen after pre-filtering, but keep as safety)
         if isinstance(f, str):
             logger.info(f"  [{i}] -> Skipping: is a string")
             continue
@@ -250,6 +268,50 @@ def filter_valid_files(
             logger.warning(f"  [{i}] ✗ REJECTED: {f.filename}, content_type={f.content_type}")
     
     logger.info(f"filter_valid_files: Returning {len(valid)}/{len(files)} valid files")
+    return valid
+
+
+# ALTERNATIVE SIMPLER APPROACH:
+# If you want to be more defensive at the endpoint level instead:
+
+def filter_valid_files_simple(
+    files: list[Union[UploadFile, str]] | None,
+    allowed_types: set = None
+) -> list:
+    """Simplified version with early empty-check."""
+    if allowed_types is None:
+        allowed_types = ALLOWED_TYPES
+    
+    # Handle None or empty list
+    if not files:
+        return []
+    
+    # Filter out empties and non-UploadFile objects in one pass
+    valid = []
+    for f in files:
+        # Skip empty strings, None, or non-objects
+        if not f or isinstance(f, str):
+            continue
+        
+        # Must be UploadFile-like with required attributes
+        if not all(hasattr(f, attr) for attr in ['filename', 'content_type', 'file']):
+            continue
+        
+        # Must have non-empty filename
+        if not f.filename:
+            continue
+        
+        # Check content_type
+        if f.content_type and f.content_type in allowed_types:
+            valid.append(f)
+            continue
+        
+        # Fallback for documents: check extension
+        if allowed_types == ALLOWED_DOC_TYPES:
+            ext = Path(f.filename).suffix.lower()
+            if ext in {'.pdf', '.docx', '.doc', '.txt'}:
+                valid.append(f)
+    
     return valid
 
 def _call_sadtalker_service(audio_path: str, image_path: Optional[str], sadtalker_url: str) -> str:

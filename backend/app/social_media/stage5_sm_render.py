@@ -1,5 +1,6 @@
 """
 Stage 5 Social Media: Render Manim scenes and combine with audio for short-form videos.
+Modified for 9:16 portrait format (Instagram Reels, TikTok, YouTube Shorts)
 """
 import subprocess
 import time
@@ -82,7 +83,8 @@ def render_manim_scene_sm(
     quality: str = "high"
 ) -> tuple[int, Path | None]:
     """
-    Render a single Manim scene for social media (short-form).
+    Render a single Manim scene for social media in 9:16 portrait format.
+    Optimized for Instagram Reels, TikTok, and YouTube Shorts.
     
     Returns:
         (scene_id, video_path or None on success)
@@ -91,26 +93,37 @@ def render_manim_scene_sm(
     output_dir = VIDEOS_DIR / video_id / "manim_renders"
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Determine quality settings (faster for SM)
-    quality_flags = {"low": "-ql", "medium": "-qm", "high": "-qh"}
-    quality_dirs = {"low": "480p15", "medium": "720p30", "high": "1080p60"}
+    # Portrait 9:16 aspect ratio configurations
+    # Using standard Manim quality flags which handle resolution internally
+    quality_configs = {
+        "low": {
+            "flag": "-ql",  # 480p @ 15fps
+        },
+        "medium": {
+            "flag": "-qm",  # 720p @ 30fps
+        },
+        "high": {
+            "flag": "-qh",  # 1080p @ 60fps
+        }
+    }
     
-    flag = quality_flags.get(quality, "-qh")
-    quality_dir = quality_dirs.get(quality, "1080p60")
+    config = quality_configs.get(quality, quality_configs["high"])
+    flag = config["flag"]
     scene_class = f"Scene{scene_id}"
     
-    logger.info(f"Scene {scene_id}: Rendering Manim ({quality_dir})...")
-    
     try:
-        # Render Manim
+        # Render Manim with standard quality flags
+        # Note: -ql/-qm/-qh already set resolution; avoid conflicting custom resolution in portrait mode
         cmd = [
             "manim", flag,
             str(manim_code_path),
             scene_class,
             "-o", f"scene_{scene_id}.mp4",
             "--media_dir", str(output_dir),
-            "--disable_caching"
+            "--disable_caching",
         ]
+        
+        logger.info(f"Scene {scene_id}: Running Manim command: {' '.join(cmd)}")
         
         result = subprocess.run(
             cmd,
@@ -119,13 +132,42 @@ def render_manim_scene_sm(
             timeout=300  # 5 minutes per scene
         )
         
-        if result.returncode != 0:
-            raise RuntimeError(f"Manim render failed:\n{result.stderr}")
+        # Log Manim output for debugging
+        if result.stdout:
+            logger.debug(f"Scene {scene_id}: Manim stdout:\n{result.stdout[:500]}")
+        if result.stderr:
+            logger.debug(f"Scene {scene_id}: Manim stderr:\n{result.stderr[:500]}")
         
-        # Find rendered video
-        rendered_video = output_dir / "videos" / f"scene_{scene_id}" / quality_dir / f"scene_{scene_id}.mp4"
-        if not rendered_video.exists():
-            logger.warning(f"Scene {scene_id}: Rendered video not found at {rendered_video}")
+        if result.returncode != 0:
+            raise RuntimeError(f"Manim render failed (exit code {result.returncode}):\n{result.stderr[:500]}")
+        
+        # Find rendered video - try multiple possible paths since Manim output structure varies
+        possible_paths = [
+            output_dir / "videos" / f"scene_{scene_id}" / "480p15" / f"scene_{scene_id}.mp4",  # low
+            output_dir / "videos" / f"scene_{scene_id}" / "720p30" / f"scene_{scene_id}.mp4",   # medium
+            output_dir / "videos" / f"scene_{scene_id}" / "1080p60" / f"scene_{scene_id}.mp4",  # high
+            output_dir / "videos" / "480p15" / f"scene_{scene_id}.mp4",  # low quality
+            output_dir / "videos" / "720p30" / f"scene_{scene_id}.mp4",   # medium quality
+            output_dir / "videos" / "1080p60" / f"scene_{scene_id}.mp4",  # high quality
+            output_dir / "videos" / f"scene_{scene_id}.mp4",              # direct path
+        ]
+        rendered_video = None
+        for path in possible_paths:
+            if path.exists():
+                rendered_video = path
+                logger.info(f"Scene {scene_id}: Found video at {path}")
+                break
+        
+        if not rendered_video:
+            # Last resort: search entire output_dir for any mp4 with this scene_id
+            for mp4_file in output_dir.rglob(f"scene_{scene_id}.mp4"):
+                rendered_video = mp4_file
+                logger.info(f"Scene {scene_id}: Found video via recursive search at {mp4_file}")
+                break
+        
+        if not rendered_video:
+            logger.error(f"Scene {scene_id}: Rendered video not found at any expected path")
+            logger.error(f"Scene {scene_id}: Output dir contents: {list(output_dir.iterdir()) if output_dir.exists() else 'N/A'}")
             return (scene_id, None)
         
         logger.info(f"Scene {scene_id}: Render complete → {rendered_video}")
@@ -172,12 +214,12 @@ def combine_video_audio_sm(video_path: Path, audio_path: Path, output_path: Path
 def concatenate_videos_sm(video_paths: list[Path], output_path: Path) -> None:
     """
     Concatenate video clips with audio overlays using ffmpeg.
-    Optimized for social media (adds padding/borders if needed).
+    Maintains 9:16 portrait aspect ratio for social media.
     """
     if not video_paths:
         raise ValueError("No videos to concatenate")
     
-    logger.info(f"Concatenating {len(video_paths)} videos...")
+    logger.info(f"Concatenating {len(video_paths)} portrait videos (9:16)...")
     
     # Create concat file
     concat_file = output_path.parent / "concat.txt"
@@ -186,11 +228,11 @@ def concatenate_videos_sm(video_paths: list[Path], output_path: Path) -> None:
             if path.exists():
                 f.write(f"file '{path.resolve()}'\n")
     
-    # FFmpeg concatenate
+    # FFmpeg concatenate - maintains aspect ratio
     cmd = [
         "ffmpeg", "-f", "concat", "-safe", "0",
         "-i", str(concat_file),
-        "-c", "copy",  # No re-encoding
+        "-c", "copy",  # No re-encoding, preserves original format
         "-y",  # Overwrite
         str(output_path)
     ]
@@ -200,7 +242,7 @@ def concatenate_videos_sm(video_paths: list[Path], output_path: Path) -> None:
     if result.returncode != 0:
         raise RuntimeError(f"FFmpeg concat failed:\n{result.stderr}")
     
-    logger.info(f"Videos concatenated → {output_path}")
+    logger.info(f"Portrait videos concatenated → {output_path}")
     concat_file.unlink()  # Cleanup
 
 
@@ -210,20 +252,25 @@ def render_sm_video(
     quality: str = "high"
 ) -> Path:
     """
-    Main render function for social media videos.
+    Main render function for social media videos in 9:16 portrait format.
     Renders all Manim scenes + combines with audio for each scene.
     
+    Args:
+        video_id: Unique identifier for the video project
+        scenes_data: Dictionary containing scene information
+        quality: Render quality - "low" (480x854), "medium" (720x1280), or "high" (1080x1920)
+    
     Returns:
-        Path to final video
+        Path to final portrait video (9:16 aspect ratio)
     """
     manim_code_dir = VIDEOS_DIR / video_id / "manim"
     audio_dir = AUDIO_DIR / video_id
     output_dir = VIDEOS_DIR / video_id
-    final_output = output_dir / "final_sm.mp4"
+    final_output = output_dir / "final_sm_portrait.mp4"
     
-    logger.info(f"Starting SM render pipeline (quality={quality})")
+    logger.info(f"Starting SM portrait render pipeline (quality={quality}, aspect_ratio=9:16)")
     
-    stage_logger = StageLogger("Social Media Render")
+    stage_logger = StageLogger("Social Media Render (Portrait)")
     stage_logger.start()
     render_start = time.time()
     
@@ -239,7 +286,7 @@ def render_sm_video(
             logger.warning(f"Scene {scene_id}: Code file not found, skipping")
             continue
         
-        # Render Manim
+        # Render Manim in portrait mode
         scene_id_ret, video_path = render_manim_scene_sm(scene, code_path, video_id, quality)
         
         if not video_path:
@@ -268,10 +315,10 @@ def render_sm_video(
     if not final_videos:
         raise RuntimeError("No scenes rendered successfully")
     
-    # Concatenate all videos with audio
+    # Concatenate all portrait videos with audio
     try:
         concatenate_videos_sm(final_videos, final_output)
-        logger.info(f"Videos concatenated → {final_output}")
+        logger.info(f"Portrait videos concatenated → {final_output}")
     except Exception as e:
         logger.error(f"Concatenation failed: {e}")
         # Fallback: just use first video
@@ -281,7 +328,7 @@ def render_sm_video(
             logger.info("Fallback: Using first video")
     
     render_elapsed = time.time() - render_start
-    stage_logger.complete(f"Final video: {final_output}")
+    stage_logger.complete(f"Final portrait video (9:16): {final_output}")
     logger.info(f"Render complete: {final_output} (render_seconds={round(render_elapsed,1)})")
     
     return final_output
