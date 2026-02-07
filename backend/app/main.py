@@ -11,6 +11,10 @@ import uuid
 from typing import Annotated, Optional
 import mimetypes
 import logging
+import subprocess
+import requests
+import base64
+import tempfile
 
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
@@ -185,6 +189,104 @@ def filter_valid_files(files: list[UploadFile]) -> list[UploadFile]:
         f for f in files 
         if f.filename and f.content_type and f.content_type in ALLOWED_TYPES
     ]
+
+
+def _call_sadtalker_service(audio_path: str, image_path: Optional[str], sadtalker_url: str) -> str:
+    """
+    Call the external Sadtalker HTTP service and return the path to the generated video.
+    Expects the service to accept multipart form with 'audio' and optional 'image'.
+    The service may return a raw video body or JSON containing a base64-encoded video field named 'video'.
+    """
+    # Upload audio and optional image to the Sadtalker service, poll for completion,
+    # then download the resulting video and return its path.
+    files = {}
+    f_audio = open(audio_path, "rb")
+    files["audio"] = (Path(audio_path).name, f_audio)
+    f_image = None
+    if image_path:
+        f_image = open(image_path, "rb")
+        files["image"] = (Path(image_path).name, f_image)
+
+    try:
+        # Accept either a base URL (e.g. http://127.0.0.1:8001) or a full path
+        # (e.g. http://127.0.0.1:8001/video/generate). Normalize to base.
+        provided = sadtalker_url.rstrip("/")
+        if provided.endswith("/video/generate"):
+            base = provided[: -len("/video/generate")]
+        elif provided.endswith("/video"):
+            base = provided[: -len("/video")]
+        else:
+            base = provided
+
+        endpoint = base + "/video/generate"
+        resp = requests.post(endpoint, files=files, timeout=300)
+    finally:
+        try:
+            f_audio.close()
+        except Exception:
+            pass
+        if f_image:
+            try:
+                f_image.close()
+            except Exception:
+                pass
+
+    if resp.status_code != 200:
+        raise HTTPException(500, f"Sadtalker service error: {resp.status_code} - {resp.text}")
+
+    data = resp.json()
+    job_id = data.get("job_id")
+    if not job_id:
+        raise HTTPException(500, "Sadtalker service did not return job_id")
+
+    # Poll status (use normalized base)
+    status_url = base + f"/video/status/{job_id}"
+    result_url = base + f"/video/result/{job_id}"
+
+    timeout_secs = 2400  # 40 minutes (Sadtalker can take 30+ minutes)
+    poll_interval = 5
+    waited = 0
+    while waited < timeout_secs:
+        s = requests.get(status_url)
+        if s.status_code == 200:
+            sdata = s.json()
+            if sdata.get("status") == "completed":
+                # fetch the resulting video
+                r = requests.get(result_url, timeout=300)
+                if r.status_code == 200:
+                    out_video_path = str(Path(audio_path).parent / "sadtalker_output.mp4")
+                    with open(out_video_path, "wb") as f:
+                        f.write(r.content)
+                    return out_video_path
+                else:
+                    raise HTTPException(500, f"Failed fetching sadtalker result: {r.status_code}")
+        else:
+            logger.debug(f"Sadtalker job {job_id} polling... (waited {waited}s/{timeout_secs}s)")
+        time.sleep(poll_interval)
+        waited += poll_interval
+
+    raise HTTPException(504, "Sadtalker service timeout waiting for job completion")
+
+
+def _merge_videos_side_by_side(left_video: str, right_video: str, out_video: str, height: int = 720):
+    """Merge two videos side-by-side using ffmpeg. Requires `ffmpeg` in PATH."""
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", left_video,
+        "-i", right_video,
+        "-filter_complex",
+        f"[0:v]scale=-1:{height}[left];[1:v]scale=-1:{height}[right];[left][right]hstack=inputs=2[v]",
+        "-map", "[v]",
+        "-map", "0:a?",
+        "-c:v", "libx264", "-crf", "23", "-preset", "veryfast",
+        "-c:a", "aac", "-b:a", "128k",
+        out_video,
+    ]
+
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(500, f"ffmpeg merge failed: {e.stderr.decode('utf-8', errors='ignore')}")
 
 async def save_files(files: list[UploadFile] | None, target_dir: Path):
     if not files:
@@ -665,6 +767,10 @@ async def create_sm_remotion_video(
     tone: str = Form("engaging and conversational"),
     logo: Optional[UploadFile] = File(None),
     image: Optional[UploadFile] = File(None),
+    # Optional Sadtalker integration
+    integrate_sadtalker: bool = Form(False),
+    sadtalker_image: Optional[UploadFile] = File(None),
+    sadtalker_url: str = Form("http://127.0.0.1:8001/video/generate"),
     user_id: Optional[str] = Form(None),
 ):
     """
@@ -744,9 +850,57 @@ async def create_sm_remotion_video(
         # Stage 6: Render
         final_path = render_remotion(video_id)
 
-        # Update DB
+        # Optional: integrate with Sadtalker (external service)
+        final_output_path = final_path
+        if integrate_sadtalker:
+            logger.info(f"Integrating with Sadtalker at {sadtalker_url}")
+
+            # Save provided face/image for Sadtalker if present
+            sadtalker_image_path = None
+            if sadtalker_image and sadtalker_image.filename and sadtalker_image.content_type:
+                ext = Path(sadtalker_image.filename).suffix
+                s_name = f"sadtalker_{uuid.uuid4()}{ext}"
+                s_path = images_dir / s_name
+                with open(s_path, "wb") as buf:
+                    shutil.copyfileobj(sadtalker_image.file, buf)
+                sadtalker_image_path = str(s_path)
+
+            # Extract audio from remotion final video for Sadtalker
+            audio_path = assets_dir / "audio_for_sadtalker.wav"
+            try:
+                subprocess.run([
+                    "ffmpeg", "-y", "-i", str(final_path), "-vn",
+                    "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2",
+                    str(audio_path)
+                ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed to extract audio for Sadtalker: {e.stderr.decode('utf-8', errors='ignore')}")
+                raise HTTPException(500, "Failed to extract audio for Sadtalker (ffmpeg error)")
+
+            # Call Sadtalker service
+            try:
+                sadtalker_video_path = _call_sadtalker_service(str(audio_path), sadtalker_image_path, sadtalker_url)
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Sadtalker service call failed: {e}")
+                raise HTTPException(500, f"Sadtalker integration failed: {e}")
+
+            # Merge original remotion video and Sadtalker video side-by-side
+            merged_path = VIDEOS_DIR / video_id / "final_sadtalker.mp4"
+            try:
+                _merge_videos_side_by_side(str(final_path), sadtalker_video_path, str(merged_path))
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Failed to merge videos: {e}")
+                raise HTTPException(500, f"Video merge failed: {e}")
+
+            final_output_path = merged_path
+
+        # Update DB with final output path
         try:
-            await db.update_video_state(video_id, state="complete", path=str(final_path))
+            await db.update_video_state(video_id, state="complete", path=str(final_output_path))
         except Exception as e:
             logger.warning(f"DB update failed: {e}")
 
@@ -756,7 +910,7 @@ async def create_sm_remotion_video(
             "status": "complete",
             "video_id": video_id,
             "video_type": "social_media_remotion",
-            "video_path": str(final_path),
+            "video_path": str(final_output_path),
             "elapsed_seconds": round(total_time, 1),
             "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s",
             "platform_hint": "Instagram Reels, TikTok, YouTube Shorts"
