@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prism Motion</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800;900&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+      }
+      .text-outline-white {
+        text-shadow: 2px 2px 0 #fff, -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff;
+      }
+      
+      /* --- Animations --- */
+
+      /* 1. Slot Machine Animation (Short & Slow: 3s) */
+      @keyframes slot-slide {
+        0% { transform: translateY(-80%); } /* Shows the last 'O' (item 5 of 5) */
+        100% { transform: translateY(0%); }  /* Shows the first 'O' */
+      }
+      .animate-slot {
+        /* Duration 3s for a short but deliberate slide */
+        animation: slot-slide 3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+      }
+
+      /* 2. Fade Pop (Entrance) - Scale & Opacity */
+      @keyframes fade-pop {
+        0% { opacity: 0; transform: scale(0.92); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+      .animate-pop-in {
+        opacity: 0; /* Start invisible */
+        animation: fade-pop 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+
+      /* 3. Underline Reveal (Clip Path) */
+      @keyframes reveal-line {
+        0% { clip-path: inset(0 100% 0 0); opacity: 0; }
+        100% { clip-path: inset(0 0 0 0); opacity: 1; }
+      }
+      .animate-underline {
+        opacity: 0;
+        animation: reveal-line 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+      }
+
+      /* Stagger Delays */
+      .delay-100 { animation-delay: 0.1s; }
+      .delay-200 { animation-delay: 0.2s; }
+      .delay-300 { animation-delay: 0.3s; }
+      .delay-400 { animation-delay: 0.4s; }
+      .delay-500 { animation-delay: 0.5s; }
+      .delay-600 { animation-delay: 0.6s; }
+      .delay-800 { animation-delay: 0.8s; }
+      .delay-1000 { animation-delay: 1.0s; }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "matter-js": "https://esm.sh/matter-js@0.19.0",
+    "@google/genai": "https://esm.sh/@google/genai@^1.40.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
