@@ -11,7 +11,10 @@ from app.paths import PROMPTS_DIR
 def generate_moa_scenes(
     drug_name: str,
     condition: str,
-    target_audience: str = "healthcare professionals"
+    target_audience: str = "healthcare professionals",
+    logo_path: str | None = None,
+    image_paths: list[str] | None = None,
+    reference_docs: str | None = None,
 ) -> dict:
     """
     Generate scene breakdown for MoA video.
@@ -20,6 +23,10 @@ def generate_moa_scenes(
         drug_name: Name of the drug/medicine
         condition: Medical condition being treated
         target_audience: "patients" | "healthcare professionals" | "medical students"
+        logo_path: Optional path to brand logo for inclusion in scenes
+        image_paths: Optional list of paths to images that can be referenced in scenes
+        reference_docs: Optional text from documents to inform scene planning
+
     
     Returns:
         dict with structure:
@@ -33,9 +40,18 @@ def generate_moa_scenes(
     prompt_path = PROMPTS_DIR / "scene_planner_moa.txt"
     prompt_template = prompt_path.read_text(encoding="utf-8")
     
-    prompt = prompt_template.replace("{drug_name}", drug_name) \
-                           .replace("{condition}", condition) \
-                           .replace("{target_audience}", target_audience)
+    prompt = prompt_template.format(
+        drug_name=drug_name,
+        condition=condition,
+        target_audience=target_audience,
+    )
+
+    if logo_path:
+        prompt += f"\n\nLOGO: {logo_path}"
+    if image_paths:
+        prompt += f"\n\nIMAGES: {', '.join(image_paths)}"
+    if reference_docs:
+        prompt += f"\n\nREFERENCE_DOCS: {reference_docs[:6000]}"
     
     output = call_llm(prompt)
     scenes_data = extract_json(output)
@@ -49,5 +65,11 @@ def generate_moa_scenes(
     scenes_data["condition"] = condition
     scenes_data["target_audience"] = target_audience
     scenes_data["video_type"] = "mechanism_of_action"
+    if logo_path:
+        scenes_data["logo_path"] = logo_path
+    if image_paths:
+        scenes_data["image_paths"] = image_paths
+    if reference_docs:
+        scenes_data["reference_docs"] = reference_docs[:6000]  # Store a truncated version for reference
     
     return scenes_data
