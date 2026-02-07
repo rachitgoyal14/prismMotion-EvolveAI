@@ -391,7 +391,7 @@ async def create_video(
     tone: str = Form("clear and reassuring"),
     logo: Optional[UploadFile] = File(None),
     image: Optional[UploadFile] = File(None),
-    documents: list[Union[UploadFile, str]] = File(default=[]),
+    documents: list[Union[UploadFile]] = File(default=[]),
     user_id: Optional[str] = Form(None),
 ):
     pipeline_start = time.time()
@@ -523,7 +523,7 @@ async def create_compliance_video(
     persona: str = Form("compliance officer"),
     tone: str = Form("formal and precise"),
     user_id: Optional[str] = Form(None),
-    documents: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
+    documents: list[Union[UploadFile]] = File(default=[]),  # ✅ Accept both
     logo: Optional[UploadFile] = File(None),
     images: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
 ):
@@ -559,7 +559,7 @@ async def create_moa_video(
     tone: str = Form("clear and educational"),
     quality: str = Form("low"),
     user_id: Optional[str] = Form(None),
-    documents: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
+    documents: list[Union[UploadFile]] = File(default=[]),  # ✅ Accept both
     logo: Optional[UploadFile] = File(None),
     images: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
 ):
@@ -600,7 +600,7 @@ async def create_doctor_video(
     quality: str = Form("low"),
     user_id: Optional[str] = Form(None),
     # video_id: Optional[str] = Form(None),
-    documents: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
+    documents: list[Union[UploadFile]] = File(default=[]),  # ✅ Accept both
     logo: Optional[UploadFile] = File(None),
     images: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
 ):
@@ -693,7 +693,16 @@ async def create_doctor_video(
     }
 
 @app.post("/create-sm")
-async def create_sm_video(body: CreateSocialMediaRequest, user_id: str | None = None):
+async def create_sm_video(
+    drug_name: str = Form(...),
+    indication: str = Form(...),
+    key_benefit: str = Form(""),
+    target_audience: str = Form("patients"),
+    persona: str = Form("friendly health narrator"),
+    tone: str = Form("engaging and conversational"),
+    quality: str = Form("low"),
+    user_id: Optional[str] = Form(None),
+):
     """
     Generate social media short-form video (Instagram Reels, TikTok).
     Mix of Manim (animations) + Pexels (visual assets).
@@ -719,8 +728,8 @@ async def create_sm_video(body: CreateSocialMediaRequest, user_id: str | None = 
             session_id = await db.create_session(
                 uid, video_id, status="processing",
                 metadata={
-                    "drug_name": body.drug_name,
-                    "indication": body.indication,
+                    "drug_name": drug_name,
+                    "indication": indication,
                     "video_type": "social_media"
                 }
             )
@@ -733,10 +742,10 @@ async def create_sm_video(body: CreateSocialMediaRequest, user_id: str | None = 
         stage_logger.start()
         
         scenes_data = generate_sm_scenes(
-            drug_name=body.drug_name,
-            indication=body.indication,
-            key_benefit=body.key_benefit,
-            target_audience=body.target_audience,
+            drug_name=drug_name,
+            indication=indication,
+            key_benefit=key_benefit,
+            target_audience=target_audience,
         )
         
         scenes = scenes_data.get("scenes", [])
@@ -767,7 +776,7 @@ async def create_sm_video(body: CreateSocialMediaRequest, user_id: str | None = 
         stage_logger = StageLogger("Script Writing")
         stage_logger.start()
         
-        script = generate_script(scenes, persona=body.persona, tone=body.tone)
+        script = generate_script(scenes, persona=persona, tone=tone)
         
         stage_logger.complete(f"{len(script)} scripts generated")
         
@@ -779,7 +788,7 @@ async def create_sm_video(body: CreateSocialMediaRequest, user_id: str | None = 
         tts_generate(script=script, video_id=video_id, scene_ids=scene_ids, max_workers=5)
         
         # Stage 5: Render (SM optimized)
-        final_path = render_sm_video(video_id, scenes_data, quality=body.quality)
+        final_path = render_sm_video(video_id, scenes_data, quality=quality)
         
         # Update DB
         try:
@@ -793,7 +802,7 @@ async def create_sm_video(body: CreateSocialMediaRequest, user_id: str | None = 
             "status": "complete",
             "video_id": video_id,
             "video_type": "social_media",
-            "drug_name": body.drug_name,
+            "drug_name": drug_name,
             "video_path": str(final_path),
             "elapsed_seconds": round(total_time, 1),
             "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s",
