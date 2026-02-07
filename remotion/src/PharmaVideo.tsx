@@ -72,12 +72,12 @@ export const calculateMetadata = ({ props }: { props: PharmaVideoProps }) => {
     durationInFrames: sceneFrames + creditFrames,
   };
 };
+
 /* ------------------ Branding Types ------------------ */
 export type BrandingAssets = {
   logos?: string[];
   images?: string[];
 };
-
 
 /* ------------------ Helper to determine if path is local or remote ------------------ */
 const isLocalPath = (src: string): boolean => {
@@ -211,18 +211,274 @@ const getExitStyle = (
   }
 };
 
-/* Scene visual with animation support */
-const SceneVisual: React.FC<{ scene: Scene; durationFrames: number;logoSrc?: string|null}> = ({
-  scene,
+/* ========================================================================
+   Reusable Sub-Components
+   ======================================================================== */
+
+/** Animated scene counter badge */
+const SceneCounter: React.FC<{
+  sceneIndex: number;
+  totalScenes: number;
+}> = ({ sceneIndex, totalScenes }) => {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [0, 15], [0, 1], {
+    extrapolateRight: "clamp",
+  });
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 48,
+        left: 56,
+        opacity,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        zIndex: 100,
+      }}
+    >
+      <div
+        style={{
+          background: "rgba(255,255,255,0.15)",
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
+          borderRadius: 40,
+          padding: "10px 22px",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          border: "1px solid rgba(255,255,255,0.12)",
+        }}
+      >
+        <div
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            backgroundColor: "#4ADE80",
+            boxShadow: "0 0 8px rgba(74,222,128,0.6)",
+          }}
+        />
+        <span
+          style={{
+            color: "rgba(255,255,255,0.95)",
+            fontSize: 16,
+            fontFamily:
+              "'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif",
+            fontWeight: 500,
+            letterSpacing: "0.04em",
+          }}
+        >
+          {String(sceneIndex + 1).padStart(2, "0")} / {String(totalScenes).padStart(2, "0")}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+/** Animated progress bar at top of scene */
+const SceneProgressBar: React.FC<{ durationFrames: number }> = ({
   durationFrames,
-  logoSrc
 }) => {
+  const frame = useCurrentFrame();
+  const progress = Math.min(frame / durationFrames, 1);
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: 3,
+        backgroundColor: "rgba(255,255,255,0.08)",
+        zIndex: 200,
+      }}
+    >
+      <div
+        style={{
+          width: `${progress * 100}%`,
+          height: "100%",
+          background: "linear-gradient(90deg, #4ADE80, #22D3EE)",
+          borderRadius: "0 2px 2px 0",
+          boxShadow: "0 0 12px rgba(74,222,128,0.4)",
+        }}
+      />
+    </div>
+  );
+};
+
+/** Animated subtitle/script overlay with word-by-word reveal */
+const ScriptOverlay: React.FC<{
+  script: string;
+  durationFrames: number;
+}> = ({ script, durationFrames }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  /* Container fade in */
+  const containerOpacity = interpolate(frame, [0, 20], [0, 1], {
+    extrapolateRight: "clamp",
+  });
+  /* Container slide up */
+  const containerY = interpolate(frame, [0, 25], [30, 0], {
+    extrapolateRight: "clamp",
+    easing: Easing.out(Easing.cubic),
+  });
+
+  /* Word-by-word reveal */
+  const words = script.split(" ");
+  const revealDuration = Math.min(durationFrames * 0.6, fps * 3);
+  const framesPerWord = revealDuration / Math.max(words.length, 1);
+
+  return (
+    <AbsoluteFill
+      style={{
+        justifyContent: "flex-end",
+        alignItems: "flex-start",
+        padding: "0 56px 64px 56px",
+        zIndex: 50,
+        pointerEvents: "none",
+      }}
+    >
+      {/* Multi-layer gradient for depth */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: "55%",
+          background: `
+            linear-gradient(
+              to top,
+              rgba(0,0,0,0.88) 0%,
+              rgba(0,0,0,0.7) 30%,
+              rgba(0,0,0,0.35) 60%,
+              rgba(0,0,0,0.08) 80%,
+              transparent 100%
+            )
+          `,
+          pointerEvents: "none",
+        }}
+      />
+      <div
+        style={{
+          position: "relative",
+          opacity: containerOpacity,
+          transform: `translateY(${containerY}px)`,
+          maxWidth: 1000,
+        }}
+      >
+        {/* Subtle accent line */}
+        <div
+          style={{
+            width: 48,
+            height: 3,
+            borderRadius: 2,
+            background: "linear-gradient(90deg, #4ADE80, #22D3EE)",
+            marginBottom: 18,
+            opacity: interpolate(frame, [8, 25], [0, 0.9], {
+              extrapolateRight: "clamp",
+            }),
+          }}
+        />
+        <p
+          style={{
+            margin: 0,
+            fontFamily:
+              "'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif",
+            fontSize: 36,
+            fontWeight: 500,
+            lineHeight: 1.5,
+            color: "white",
+            textShadow: "0 2px 20px rgba(0,0,0,0.5)",
+            letterSpacing: "-0.01em",
+          }}
+        >
+          {words.map((word, i) => {
+            const wordStart = i * framesPerWord;
+            const wordOpacity = interpolate(
+              frame,
+              [wordStart, wordStart + 10],
+              [0.2, 1],
+              { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
+            );
+            return (
+              <span
+                key={`${word}-${i}`}
+                style={{
+                  opacity: wordOpacity,
+                  transition: "opacity 0.1s",
+                }}
+              >
+                {word}{" "}
+              </span>
+            );
+          })}
+        </p>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+/** Subtle Ken Burns effect for images */
+const KenBurnsWrapper: React.FC<{
+  children: React.ReactNode;
+  durationFrames: number;
+}> = ({ children, durationFrames }) => {
+  const frame = useCurrentFrame();
+
+  const scale = interpolate(frame, [0, durationFrames], [1.0, 1.08], {
+    extrapolateRight: "clamp",
+    easing: Easing.linear,
+  });
+  const translateX = interpolate(frame, [0, durationFrames], [0, -1.2], {
+    extrapolateRight: "clamp",
+  });
+  const translateY = interpolate(frame, [0, durationFrames], [0, -0.8], {
+    extrapolateRight: "clamp",
+  });
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        overflow: "hidden",
+        position: "relative",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          transform: `scale(${scale}) translate(${translateX}%, ${translateY}%)`,
+          transformOrigin: "center center",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
+
+/* ========================================================================
+   Scene visual with animation support (enhanced)
+   ======================================================================== */
+const SceneVisual: React.FC<{
+  scene: Scene;
+  durationFrames: number;
+  logoSrc?: string | null;
+  sceneIndex: number;
+  totalScenes: number;
+}> = ({ scene, durationFrames, logoSrc, sceneIndex, totalScenes }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
   const animConfig = scene.animation;
-  const entranceDuration =
-    (animConfig?.entrance?.duration_sec ?? 0.5) * fps;
+  const entranceDuration = (animConfig?.entrance?.duration_sec ?? 0.5) * fps;
   const exitDuration = (animConfig?.exit?.duration_sec ?? 0.5) * fps;
 
   let mediaStyle: React.CSSProperties = {
@@ -254,57 +510,112 @@ const SceneVisual: React.FC<{ scene: Scene; durationFrames: number;logoSrc?: str
     );
   }
 
+  const isImage = !scene.video?.src && !!scene.image?.src;
+
   return (
-    <AbsoluteFill style={{ backgroundColor: "#0a0a0a" }}>
+    <AbsoluteFill style={{ backgroundColor: "#050505" }}>
+      {/* Scene progress bar */}
+      <SceneProgressBar durationFrames={durationFrames} />
+
+      {/* Audio */}
       {scene.audio_src && <Audio src={staticFile(scene.audio_src)} />}
 
+      {/* Media layer */}
       {scene.video?.src ? (
         <OffthreadVideo
-          src={isLocalPath(scene.video.src) ? staticFile(scene.video.src) : scene.video.src}
+          src={
+            isLocalPath(scene.video.src)
+              ? staticFile(scene.video.src)
+              : scene.video.src
+          }
           style={mediaStyle}
         />
       ) : scene.image?.src ? (
-        <Img
-          src={isLocalPath(scene.image.src) ? staticFile(scene.image.src) : scene.image.src}
-          alt={scene.image.alt ?? ""}
-          style={mediaStyle}
-        />
+        <KenBurnsWrapper durationFrames={durationFrames}>
+          <Img
+            src={
+              isLocalPath(scene.image.src)
+                ? staticFile(scene.image.src)
+                : scene.image.src
+            }
+            alt={scene.image.alt ?? ""}
+            style={mediaStyle}
+          />
+        </KenBurnsWrapper>
       ) : (
+        /* Missing media placeholder */
         <AbsoluteFill
           style={{
             justifyContent: "center",
             alignItems: "center",
-            backgroundColor: "#222",
+            background:
+              "radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a0a 100%)",
           }}
         >
-          <span style={{ color: "#fff" }}>Missing media</span>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 16,
+            }}
+          >
+            <div
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: "50%",
+                border: "2px solid rgba(255,255,255,0.1)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="rgba(255,255,255,0.3)"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+            </div>
+            <span
+              style={{
+                color: "rgba(255,255,255,0.3)",
+                fontSize: 16,
+                fontFamily:
+                  "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+                fontWeight: 400,
+                letterSpacing: "0.03em",
+              }}
+            >
+              Media unavailable
+            </span>
+          </div>
         </AbsoluteFill>
       )}
 
-      <AbsoluteFill
-        style={{
-          justifyContent: "flex-end",
-          padding: 48,
-          background:
-            "linear-gradient(transparent 40%, rgba(0,0,0,0.75) 100%)",
-        }}
-      >
-        <div
-          style={{
-            color: "#fff",
-            fontSize: 32,
-            fontFamily: "sans-serif",
-            maxWidth: 900,
-          }}
-        >
-          {scene.script}
-        </div>
-      </AbsoluteFill>
+      {/* Scene counter */}
+      <SceneCounter sceneIndex={sceneIndex} totalScenes={totalScenes} />
+
+      {/* Script overlay */}
+      {scene.script && (
+        <ScriptOverlay script={scene.script} durationFrames={durationFrames} />
+      )}
     </AbsoluteFill>
   );
 };
 
-/* Transition overlay between scenes */
+/* ========================================================================
+   Transition overlay between scenes (enhanced)
+   ======================================================================== */
 const TransitionOverlay: React.FC<{
   from: number;
   transitionDuration: number;
@@ -326,14 +637,15 @@ const TransitionOverlay: React.FC<{
     left: 0,
     width: "100%",
     height: "100%",
+    zIndex: 300,
   };
 
   switch (transitionType) {
     case "fade":
-      overlayStyle.backgroundColor = `rgba(0, 0, 0, ${easeProgress})`;
+      overlayStyle.backgroundColor = `rgba(5, 5, 5, ${easeProgress})`;
       break;
     case "slideLeft":
-      overlayStyle.backgroundColor = "#000";
+      overlayStyle.backgroundColor = "#050505";
       overlayStyle.transform = `translateX(${interpolate(
         progress,
         [0, 1],
@@ -341,7 +653,7 @@ const TransitionOverlay: React.FC<{
       )}%)`;
       break;
     case "slideRight":
-      overlayStyle.backgroundColor = "#000";
+      overlayStyle.backgroundColor = "#050505";
       overlayStyle.transform = `translateX(${interpolate(
         progress,
         [0, 1],
@@ -349,7 +661,7 @@ const TransitionOverlay: React.FC<{
       )}%)`;
       break;
     case "slideUp":
-      overlayStyle.backgroundColor = "#000";
+      overlayStyle.backgroundColor = "#050505";
       overlayStyle.transform = `translateY(${interpolate(
         progress,
         [0, 1],
@@ -357,7 +669,7 @@ const TransitionOverlay: React.FC<{
       )}%)`;
       break;
     case "slideDown":
-      overlayStyle.backgroundColor = "#000";
+      overlayStyle.backgroundColor = "#050505";
       overlayStyle.transform = `translateY(${interpolate(
         progress,
         [0, 1],
@@ -365,29 +677,274 @@ const TransitionOverlay: React.FC<{
       )}%)`;
       break;
     case "zoomFade":
-      overlayStyle.backgroundColor = "#000";
-      overlayStyle.transform = `scale(${interpolate(progress, [0, 1], [1.2, 1])})`;
+      overlayStyle.backgroundColor = "#050505";
+      overlayStyle.transform = `scale(${interpolate(
+        progress,
+        [0, 1],
+        [1.2, 1]
+      )})`;
       overlayStyle.opacity = easeProgress;
       break;
   }
-  
 
   return <AbsoluteFill style={overlayStyle} />;
 };
 
-/* ------------------ Main Composition with transition support ------------------ */
-export const PharmaVideo: React.FC<PharmaVideoProps> = ({ scenes ,branding}) => {
+/* ========================================================================
+   Credits scene (enhanced)
+   ======================================================================== */
+const CreditsScene: React.FC<{
+  logoSrc?: string | null;
+  brandingImage?: string | null;
+}> = ({ logoSrc, brandingImage }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const totalFrames = fps * 3;
+
+  const fadeIn = interpolate(frame, [0, 20], [0, 1], {
+    extrapolateRight: "clamp",
+  });
+  const slideUp = interpolate(frame, [0, 25], [20, 0], {
+    extrapolateRight: "clamp",
+    easing: Easing.out(Easing.cubic),
+  });
+  const fadeOut = interpolate(
+    frame,
+    [totalFrames - 20, totalFrames],
+    [1, 0],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
+  );
+
+  const combinedOpacity = fadeIn * fadeOut;
+
+  /* Product image separate animation: delayed entrance + subtle scale */
+  const productFadeIn = interpolate(frame, [10, 35], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const productScale = interpolate(frame, [10, 35], [0.92, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: Easing.out(Easing.cubic),
+  });
+  const productSlideUp = interpolate(frame, [10, 35], [30, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: Easing.out(Easing.cubic),
+  });
+  const productFadeOut = interpolate(
+    frame,
+    [totalFrames - 20, totalFrames],
+    [1, 0],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
+  );
+
+  return (
+    <AbsoluteFill
+      style={{
+        background:
+          "radial-gradient(ellipse at 50% 40%, #111118 0%, #050505 100%)",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 28,
+          opacity: combinedOpacity,
+          transform: `translateY(${slideUp}px)`,
+        }}
+      >
+        {/* Product / branding image -- shown prominently only here */}
+        {brandingImage && (
+          <div
+            style={{
+              opacity: productFadeIn * productFadeOut,
+              transform: `translateY(${productSlideUp}px) scale(${productScale})`,
+              marginBottom: 12,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <div
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 20,
+                padding: 20,
+                boxShadow:
+                  "0 8px 40px rgba(0,0,0,0.4), 0 0 80px rgba(74,222,128,0.06)",
+              }}
+            >
+              <Img
+                src={
+                  isLocalPath(brandingImage)
+                    ? staticFile(brandingImage)
+                    : brandingImage
+                }
+                style={{
+                  maxWidth: 340,
+                  maxHeight: 220,
+                  objectFit: "contain",
+                  display: "block",
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Logo in credits */}
+        {logoSrc && (
+          <Img
+            src={isLocalPath(logoSrc) ? staticFile(logoSrc) : logoSrc}
+            style={{
+              width: 100,
+              objectFit: "contain",
+              marginBottom: 8,
+              opacity: 0.8,
+            }}
+          />
+        )}
+        {/* Divider */}
+        <div
+          style={{
+            width: 48,
+            height: 2,
+            borderRadius: 1,
+            background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)",
+          }}
+        />
+        <span
+          style={{
+            color: "rgba(255,255,255,0.4)",
+            fontSize: 18,
+            fontFamily:
+              "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+            fontWeight: 400,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+          }}
+        >
+          Photos / Videos from Pexels
+        </span>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+/* ========================================================================
+   Logo overlay (persistent, enhanced)
+   ======================================================================== */
+const LogoOverlay: React.FC<{ logoSrc: string }> = ({ logoSrc }) => {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [0, 20], [0, 0.85], {
+    extrapolateRight: "clamp",
+  });
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 40,
+        right: 48,
+        zIndex: 9999,
+        pointerEvents: "none",
+        opacity,
+      }}
+    >
+      <div
+        style={{
+          background: "rgba(0,0,0,0.25)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          borderRadius: 12,
+          padding: 12,
+          border: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <Img
+          src={isLocalPath(logoSrc) ? staticFile(logoSrc) : logoSrc}
+          style={{
+            width: 120,
+            objectFit: "contain",
+            display: "block",
+          }}
+        />
+      </div>
+    </div>
+  );
+};
+
+/** Branding image overlay (persistent, bottom-left, enhanced) */
+const BrandingImageOverlay: React.FC<{ brandingImage: string }> = ({
+  brandingImage,
+}) => {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [0, 25], [0, 0.9], {
+    extrapolateRight: "clamp",
+  });
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        bottom: 40,
+        right: 48,
+        zIndex: 9000,
+        pointerEvents: "none",
+        opacity,
+      }}
+    >
+      <div
+        style={{
+          background: "rgba(0,0,0,0.2)",
+          backdropFilter: "blur(10px)",
+          WebkitBackdropFilter: "blur(10px)",
+          borderRadius: 10,
+          padding: 10,
+          border: "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
+        <Img
+          src={
+            isLocalPath(brandingImage)
+              ? staticFile(brandingImage)
+              : brandingImage
+          }
+          style={{
+            width: 240,
+            objectFit: "contain",
+            display: "block",
+          }}
+        />
+      </div>
+    </div>
+  );
+};
+
+/* ========================================================================
+   Main Composition with transition support (enhanced)
+   ======================================================================== */
+export const PharmaVideo: React.FC<PharmaVideoProps> = ({
+  scenes,
+  branding,
+}) => {
   const { fps } = useVideoConfig();
 
   let from = 0;
   const logoSrc =
-  branding?.logos && branding.logos.length > 0
-    ? branding.logos[0]
-    : null;
-
+    branding?.logos && branding.logos.length > 0 ? branding.logos[0] : null;
+  const brandingImage =
+    branding?.images && branding.images.length > 0
+      ? branding.images[0]
+      : null;
 
   return (
-    <AbsoluteFill style={{ backgroundColor: "black" }}>
+    <AbsoluteFill style={{ backgroundColor: "#050505" }}>
       {scenes.map((scene, index) => {
         const durationFrames = Math.max(
           1,
@@ -397,16 +954,20 @@ export const PharmaVideo: React.FC<PharmaVideoProps> = ({ scenes ,branding}) => 
         const start = from;
         from += durationFrames;
 
-        const nextScene = index < scenes.length - 1 ? scenes[index + 1] : null;
+        const nextScene =
+          index < scenes.length - 1 ? scenes[index + 1] : null;
         const hasTransition = nextScene?.animation?.transition;
 
         return (
           <React.Fragment key={scene.scene_id}>
-            <Sequence
-              from={start}
-              durationInFrames={durationFrames}
-            >
-              <SceneVisual scene={scene} durationFrames={durationFrames}  logoSrc={logoSrc}/>
+            <Sequence from={start} durationInFrames={durationFrames}>
+              <SceneVisual
+                scene={scene}
+                durationFrames={durationFrames}
+                logoSrc={logoSrc}
+                sceneIndex={index}
+                totalScenes={scenes.length}
+              />
             </Sequence>
 
             {/* Render transition overlay if needed */}
@@ -416,7 +977,9 @@ export const PharmaVideo: React.FC<PharmaVideoProps> = ({ scenes ,branding}) => 
                 transitionDuration={
                   (nextScene.animation?.transition?.duration_sec ?? 0.5) * fps
                 }
-                transitionType={nextScene.animation?.transition?.type ?? "fade"}
+                transitionType={
+                  nextScene.animation?.transition?.type ?? "fade"
+                }
               />
             )}
           </React.Fragment>
@@ -425,33 +988,11 @@ export const PharmaVideo: React.FC<PharmaVideoProps> = ({ scenes ,branding}) => 
 
       {/* Credits */}
       <Sequence from={from} durationInFrames={fps * 3}>
-        <AbsoluteFill
-          style={{
-            backgroundColor: "#111",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <span style={{ color: "#888", fontSize: 24 }}>
-            Photos / Videos from Pexels
-          </span>
-        </AbsoluteFill>
+        <CreditsScene logoSrc={logoSrc} brandingImage={brandingImage} />
       </Sequence>
-      {logoSrc && (
-  <Img
-    src={staticFile(logoSrc)}
-    style={{
-      position: "absolute",
-      top: 40,
-      right: 40,
-      width: 140,
-      opacity: 0.9,
-      pointerEvents: "none",
-      zIndex: 9999
-    }}
-  />
-)}
 
+      {/* Persistent logo overlay */}
+      {logoSrc && <LogoOverlay logoSrc={logoSrc} />}
     </AbsoluteFill>
   );
 };

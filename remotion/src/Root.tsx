@@ -32,6 +32,8 @@ export const Root: React.FC = () => {
     inputProps.scenes.length > 0
       ? (inputProps.scenes as PharmaVideoProps["scenes"])
       : defaultScenes;
+    
+    const branding = inputProps?.branding;
 
   return (
     <Composition
@@ -42,6 +44,7 @@ export const Root: React.FC = () => {
       height={HEIGHT}
       defaultProps={{
         scenes,
+        branding
       }}
       calculateMetadata={calculateMetadata}
     />
