@@ -171,7 +171,7 @@ def render_remotion(video_id: str) -> Path:
         raise RuntimeError("npx not found in PATH. Ensure Node.js is installed and in your PATH.")
 
     cmd = [
-        "npx.cmd",  # This works cross-platform; subprocess will resolve .cmd on Windows if needed
+        "npx",  # This works cross-platform; subprocess will resolve .cmd on Windows if needed
         "remotion",
         "render",
         "src/index.ts",

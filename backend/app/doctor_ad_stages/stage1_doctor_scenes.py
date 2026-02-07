@@ -16,7 +16,10 @@ def generate_doctor_scenes(
     indication: str,
     moa_summary: str = "",
     clinical_data: str = "",
-    pexels_query: str = "doctor consultation"
+    pexels_query: str = "doctor consultation",
+    logo_path: str | None = None,
+    image_paths: list[str] | None = None,
+    reference_docs: str | None = None
 ) -> dict:
     """
     Generate scene breakdown for doctor-facing video.
@@ -27,6 +30,9 @@ def generate_doctor_scenes(
         moa_summary: Optional mechanism summary
         clinical_data: Optional clinical trial data
         pexels_query: Query for final Pexels scene
+        logo_path: Optional path to brand logo for inclusion in scenes
+        image_paths: Optional list of paths to images that can be referenced in scenes
+        reference_docs: Optional text from documents to inform scene planning
     
     Returns:
         dict with structure:
@@ -52,9 +58,21 @@ def generate_doctor_scenes(
         context += f"\nMechanism: {moa_summary}"
     if clinical_data:
         context += f"\nClinical Data: {clinical_data}"
+    if reference_docs:
+        context += f"\nReference Docs: {reference_docs[:6000]}"  # Truncate for prompt
+    if logo_path:
+        context += f"\nLogo: {logo_path}"
+    if image_paths:
+        context += f"\nImages: {', '.join(image_paths)}"
+    if pexels_query:
+        context += f"\nPexels Query: {pexels_query}"
+    if context:
+        prompt_template += f"\n\nCONTEXT:\n{context}"
     
     prompt = prompt_template.replace("{drug_name}", drug_name) \
                            .replace("{indication}", indication)
+    
+
     
     logger.info(f"Generating doctor ad scenes for {drug_name}...")
     
@@ -69,7 +87,14 @@ def generate_doctor_scenes(
     scenes_data["drug_name"] = drug_name
     scenes_data["indication"] = indication
     scenes_data["video_type"] = "doctor_ad"
+    if logo_path:
+        scenes_data["logo_path"] = logo_path
+    if image_paths:
+        scenes_data["image_paths"] = image_paths
+    if reference_docs:
+        scenes_data["reference_docs"] = reference_docs[:6000]  # Store a truncated version for reference
     
+
     # Ensure last scene is Pexels
     scenes = scenes_data["scenes"]
     if scenes and scenes[-1]["type"] != "pexels":
