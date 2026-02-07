@@ -98,12 +98,15 @@ def render_manim_scene_sm(
     quality_configs = {
         "low": {
             "flag": "-ql",  # 480p @ 15fps
+            "width": 480,
         },
         "medium": {
             "flag": "-qm",  # 720p @ 30fps
+            "width": 720,
         },
         "high": {
             "flag": "-qh",  # 1080p @ 60fps
+            "width": 1080,
         }
     }
     
@@ -169,9 +172,35 @@ def render_manim_scene_sm(
             logger.error(f"Scene {scene_id}: Rendered video not found at any expected path")
             logger.error(f"Scene {scene_id}: Output dir contents: {list(output_dir.iterdir()) if output_dir.exists() else 'N/A'}")
             return (scene_id, None)
+
+        # Re-encode to portrait 9:16 using ffmpeg to ensure correct orientation/aspect
+        width = config.get("width", 480)
+        height = int(round(width * 16 / 9))
+        portrait_video = output_dir / f"scene_{scene_id}_portrait.mp4"
+
+        try:
+            ff_cmd = [
+                "ffmpeg", "-y", "-i", str(rendered_video),
+                "-vf", f"scale={width}:-2,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
+                "-c:v", "libx264", "-crf", "23", "-preset", "veryfast",
+                str(portrait_video)
+            ]
+            logger.info(f"Scene {scene_id}: Re-encoding to portrait {width}x{height} via ffmpeg")
+            r = subprocess.run(ff_cmd, capture_output=True, text=True, timeout=120)
+            if r.returncode != 0:
+                logger.error(f"Scene {scene_id}: ffmpeg portrait encode failed: {r.stderr[:400]}")
+                # fallback to using original rendered video
+                final_render_video = rendered_video
+            else:
+                final_render_video = portrait_video
+                logger.info(f"Scene {scene_id}: Portrait video created → {portrait_video}")
+        except Exception as e:
+            logger.error(f"Scene {scene_id}: ffmpeg portrait encode exception: {e}")
+            final_render_video = rendered_video
         
         logger.info(f"Scene {scene_id}: Render complete → {rendered_video}")
-        return (scene_id, rendered_video)
+        return (scene_id, final_render_video)
+
         
     except subprocess.TimeoutExpired:
         logger.error(f"Scene {scene_id}: Render timeout (5min limit)")
@@ -295,22 +324,20 @@ def render_sm_video(
         
         # Find and combine audio
         audio_file = audio_dir / f"scene_{scene_id}.wav"
-        if not audio_file.exists():
-            # Try .mp3 as fallback
-            audio_file = audio_dir / f"scene_{scene_id}.mp3"
-        
+        final_scene_video = output_dir / f"scene_{scene_id}_final.mp4"
+
         if audio_file.exists():
             try:
-                final_scene_video = output_dir / f"scene_{scene_id}_final.mp4"
                 combine_video_audio_sm(video_path, audio_file, final_scene_video)
                 final_videos.append(final_scene_video)
-                logger.info(f"Scene {scene_id}: Manim + audio combined ✓")
+                logger.info(f"Scene {scene_id}: Audio combined")
             except Exception as e:
                 logger.warning(f"Scene {scene_id}: Audio combine failed - {e}, using silent")
                 final_videos.append(video_path)
         else:
             logger.warning(f"Scene {scene_id}: No audio found, using silent")
             final_videos.append(video_path)
+
     
     if not final_videos:
         raise RuntimeError("No scenes rendered successfully")
