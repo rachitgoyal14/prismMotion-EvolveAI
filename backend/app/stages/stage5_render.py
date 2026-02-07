@@ -114,30 +114,48 @@ def render_remotion(video_id: str) -> Path:
             # This relative path is what <Audio src={staticFile(...)} /> will receive.
             audio_rel_path = f"audio/{video_id}/scene_{sid}.wav"
 
-        # Copy image if local exists, else fallback to remote
-        image = s.get("pexels_image") or {}
-        source_image = Path(image.get("local_src")) if image.get("local_src") else None
-        image_rel_path = None
-        image_alt = image.get("alt", "")
-        if source_image and source_image.exists():
-            dest_image = media_public_dir / source_image.name
-            shutil.copy2(source_image, dest_image)
-            image_rel_path = f"media/{video_id}/{source_image.name}"
-        elif image.get("src"):
-            logger.warning(f"Using remote image for scene {sid}")
-            image_rel_path = image["src"]  # Requires --enable-remote-media
+                    # Copy image if local exists, else fallback to remote
+            image = s.get("pexels_image") or {}
+            image_rel_path = None
+            image_alt = image.get("alt", "")
 
-        # Copy video if local exists, else fallback to remote
-        video = s.get("pexels_video") or {}
-        source_video = Path(video.get("local_src")) if video.get("local_src") else None
-        video_rel_path = None
-        if source_video and source_video.exists():
-            dest_video = media_public_dir / source_video.name
-            shutil.copy2(source_video, dest_video)
-            video_rel_path = f"media/{video_id}/{source_video.name}"
-        elif video.get("src"):
-            logger.warning(f"Using remote video for scene {sid}")
-            video_rel_path = video["src"]
+            # Check if local_src exists (already in remotion/public/)
+            if image.get("local_src"):
+                source_image = REMOTION_DIR / "public" / image.get("local_src")
+                if source_image.exists():
+                    # File already exists in correct location, just use the relative path
+                    image_rel_path = image.get("local_src")
+                    logger.info(f"✓ Using local image for scene {sid}: {image_rel_path}")
+                else:
+                    logger.warning(f"Local image path specified but file not found: {source_image}")
+                    # Fallback to remote if local file missing
+                    if image.get("src"):
+                        logger.warning(f"Using remote image for scene {sid}")
+                        image_rel_path = image["src"]
+            elif image.get("src"):
+                logger.warning(f"Using remote image for scene {sid}")
+                image_rel_path = image["src"]
+
+            # Copy video if local exists, else fallback to remote
+            video = s.get("pexels_video") or {}
+            video_rel_path = None
+
+            # Check if local_src exists (already in remotion/public/)
+            if video.get("local_src"):
+                source_video = REMOTION_DIR / "public" / video.get("local_src")
+                if source_video.exists():
+                    # File already exists in correct location, just use the relative path
+                    video_rel_path = video.get("local_src")
+                    logger.info(f"✓ Using local video for scene {sid}: {video_rel_path}")
+                else:
+                    logger.warning(f"Local video path specified but file not found: {source_video}")
+                    # Fallback to remote if local file missing
+                    if video.get("src"):
+                        logger.warning(f"Using remote video for scene {sid}")
+                        video_rel_path = video["src"]
+            elif video.get("src"):
+                logger.warning(f"Using remote video for scene {sid}")
+                video_rel_path = video["src"]
 
         entry = {
             "scene_id": sid,
@@ -165,11 +183,7 @@ def render_remotion(video_id: str) -> Path:
     props_path = out_dir / "props.json"
     props_path.write_text(json.dumps(props, ensure_ascii=False), encoding="utf-8")
     final_path = out_dir / "final.mp4"
-
-    npx_cmd = shutil.which("npx")
-    if npx_cmd is None:
-        raise RuntimeError("npx not found in PATH. Ensure Node.js is installed and in your PATH.")
-
+   
     cmd = [
         "npx.cmd",  # This works cross-platform; subprocess will resolve .cmd on Windows if needed
         "remotion",
@@ -181,6 +195,7 @@ def render_remotion(video_id: str) -> Path:
         "--enable-remote-media",  # Keep for remote fallbacks; remove if no remotes expected
         "--codec=h264",
         "--audio-codec=aac",
+        "--port=0",
     ]
 
     subprocess.run(
