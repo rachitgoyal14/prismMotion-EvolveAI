@@ -8,7 +8,7 @@ import time
 import os
 import shutil
 import uuid
-from typing import Annotated, Optional
+from typing import Annotated, Optional,List
 import mimetypes
 import logging
 import subprocess
@@ -201,7 +201,7 @@ SOLUTION: Pre-filter the list to remove empty strings and None values before pro
 """
 
 def filter_valid_files(
-    files: list[Union[UploadFile, str]] | None,
+    files: list[Union['UploadFile', str]] | None,
     allowed_types: set = None
 ) -> list:
     """Filter out invalid items and return only valid `UploadFile` objects."""
@@ -214,28 +214,31 @@ def filter_valid_files(
     
     valid = []
     
-    if not files or not isinstance(files, list):
+    # Handle None input
+    if files is None:
         return valid
     
-    # ✅ FIX: Filter out empty strings and None values FIRST
-    # FastAPI sends [""] when no files uploaded with File(default=[])
-    files = [f for f in files if f != "" and f is not None]
-    
-    # Early return if nothing left after filtering
-    if not files:
-        logger.info(f"filter_valid_files: No valid files after filtering empty entries")
+    # Handle non-list input
+    if not isinstance(files, list):
         return valid
     
-    logger.info(f"filter_valid_files: Processing {len(files)} items")
-    
-    for i, f in enumerate(files):
-        # Skip strings (shouldn't happen after pre-filtering, but keep as safety)
-        if isinstance(f, str):
-            logger.info(f"  [{i}] -> Skipping: is a string")
+    # ✅ CRITICAL FIX: Remove ALL garbage BEFORE processing
+    cleaned_files = []
+    for f in files:
+        if f is None:
             continue
-        
-        # ✅ Check if it has the UploadFile interface (duck typing)
-        # This works for both fastapi.UploadFile and starlette.datastructures.UploadFile
+        if isinstance(f, str):  # Skip ANY string (including "")
+            continue
+        cleaned_files.append(f)
+    
+    # If nothing left, return empty
+    if not cleaned_files:
+        return valid
+    
+    logger.info(f"filter_valid_files: Processing {len(cleaned_files)} items")
+    
+    for i, f in enumerate(cleaned_files):
+        # Check if it has the UploadFile interface
         if not hasattr(f, 'filename') or not hasattr(f, 'content_type') or not hasattr(f, 'file'):
             logger.info(f"  [{i}] -> Skipping: not an UploadFile-like object")
             continue
@@ -267,7 +270,7 @@ def filter_valid_files(
         else:
             logger.warning(f"  [{i}] ✗ REJECTED: {f.filename}, content_type={f.content_type}")
     
-    logger.info(f"filter_valid_files: Returning {len(valid)}/{len(files)} valid files")
+    logger.info(f"filter_valid_files: Returning {len(valid)} valid files")
     return valid
 
 
@@ -453,11 +456,17 @@ async def create_video(
     tone: str = Form("clear and reassuring"),
     logo: Optional[UploadFile] = File(None),
     image: Optional[UploadFile] = File(None),
-    documents: list[Union[UploadFile]] = File(default=[]),
+    documents: Optional[list[Union[UploadFile, str]]] = File(None),
     user_id: Optional[str] = Form(None),
 ):
     pipeline_start = time.time()
     video_id = generate_video_id()
+    documents = [
+    f for f in (documents or [])
+    if isinstance(f, UploadFile)
+]
+
+
     
     # ✅ DEBUG: Log raw input
     logger.info(f"=== DOCUMENT UPLOAD DEBUG ===")
@@ -585,10 +594,14 @@ async def create_compliance_video(
     persona: str = Form("compliance officer"),
     tone: str = Form("formal and precise"),
     user_id: Optional[str] = Form(None),
-    documents: list[Union[UploadFile]] = File(default=[]),  # ✅ Accept both
+    documents: Optional[list[Union[UploadFile, str]]] = File(None),# ✅ Accept both
     logo: Optional[UploadFile] = File(None),
     images: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
 ):
+    documents = [
+    f for f in (documents or [])
+    if isinstance(f, UploadFile)
+]
     valid_docs = filter_valid_files(documents, allowed_types=ALLOWED_DOC_TYPES)
     valid_logo = logo if logo and logo.filename and logo.content_type else None
     valid_images = filter_valid_files(images, allowed_types=ALLOWED_TYPES)
@@ -621,12 +634,16 @@ async def create_moa_video(
     tone: str = Form("clear and educational"),
     quality: str = Form("low"),
     user_id: Optional[str] = Form(None),
-    documents: list[Union[UploadFile]] = File(default=[]),  # ✅ Accept both
+    documents: Optional[list[Union[UploadFile, str]]] = File(None),  # ✅ Accept both
     logo: Optional[UploadFile] = File(None),
     images: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
 ):
     pipeline_start = time.time()
     video_id = generate_video_id()
+    documents = [
+    f for f in (documents or [])
+    if isinstance(f, UploadFile)
+]
 
     valid_docs = filter_valid_files(documents, allowed_types=ALLOWED_DOC_TYPES)
     valid_logo = logo if logo and logo.filename and logo.content_type else None
@@ -662,7 +679,8 @@ async def create_doctor_video(
     quality: str = Form("low"),
     user_id: Optional[str] = Form(None),
     # video_id: Optional[str] = Form(None),
-    documents: list[Union[UploadFile]] = File(default=[]),  # ✅ Accept both
+    documents: Optional[list[Union[UploadFile, str]]] = File(None),
+
     logo: Optional[UploadFile] = File(None),
     images: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
 ):
@@ -673,6 +691,10 @@ async def create_doctor_video(
 
     pipeline_start = time.time()
     video_id = generate_video_id()
+    documents = [
+    f for f in (documents or [])
+    if isinstance(f, UploadFile)
+]
 
     valid_docs = filter_valid_files(documents, allowed_types=ALLOWED_DOC_TYPES)
     valid_logo = logo if logo and logo.filename and logo.content_type else None
