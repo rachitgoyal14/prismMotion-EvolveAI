@@ -1,5 +1,5 @@
 """
-Stage 2 Doctor Ad: Generate Manim code for all scenes (including closing with Pexels image).
+Stage 2 Doctor Ad: Generate Manim code for all scenes (including logo closing scene).
 """
 import json
 from pathlib import Path
@@ -22,15 +22,113 @@ except ImportError:
     validate_manim_code = None
 
 
+def generate_logo_scene_code(scene: dict) -> str:
+    """
+    Generate Manim code for logo scene with optional tagline.
+    """
+    scene_id = scene.get("scene_id", 1)
+    logo_path = scene.get("logo_path", "")
+    tagline = scene.get("tagline", "")
+    
+    code = f'''from manim import *
+from manim import config
+from pathlib import Path
+
+class Scene{scene_id}(Scene):
+    def construct(self):
+        # Set white background
+        self.camera.background_color = WHITE
+        
+        # Define custom colors
+        medical_blue = "#2E86AB"
+        
+'''
+    
+    if logo_path:
+        code += f'''        # Load company logo
+        try:
+            logo = ImageMobject("{logo_path}")
+            logo.height = config.frame_height * 0.4
+            logo.move_to(ORIGIN)
+            
+'''
+        
+        if tagline:
+            code += f'''            # Add tagline
+            tagline = Text("{tagline}", font="Sans", font_size=32, color=BLACK)
+            tagline.next_to(logo, DOWN, buff=0.8)
+            
+            self.play(FadeIn(logo, scale=0.9), run_time=1)
+            self.wait(0.5)
+            self.play(Write(tagline), run_time=0.8)
+            self.wait(2)
+            self.play(FadeOut(logo), FadeOut(tagline), run_time=1)
+'''
+        else:
+            code += f'''            self.play(FadeIn(logo, scale=0.9), run_time=1)
+            self.wait(3)
+            self.play(FadeOut(logo), run_time=1)
+'''
+        
+        code += f'''        except Exception as e:
+            # Fallback: Show text if logo fails
+            text = Text("Thank You", font="Sans", font_size=56, color=BLACK)
+            text.move_to(ORIGIN)
+            self.play(Write(text), run_time=1)
+            self.wait(3)
+            self.play(FadeOut(text), run_time=1)
+'''
+    else:
+        # No logo provided - show thank you text
+        code += f'''        text = Text("Thank You", font="Sans", font_size=56, color=BLACK)
+        text.move_to(ORIGIN)
+'''
+        
+        if tagline:
+            code += f'''        tagline = Text("{tagline}", font="Sans", font_size=32, color=BLACK)
+        tagline.next_to(text, DOWN, buff=0.8)
+        
+        self.play(Write(text), run_time=1)
+        self.wait(0.5)
+        self.play(Write(tagline), run_time=0.8)
+        self.wait(2)
+        self.play(FadeOut(text), FadeOut(tagline), run_time=1)
+'''
+        else:
+            code += f'''        
+        self.play(Write(text), run_time=1)
+        self.wait(3)
+        self.play(FadeOut(text), run_time=1)
+'''
+    
+    code += '''        self.wait(0.3)
+'''
+    
+    return code
+
+
 def generate_manim_scene(scene: dict, retry_count: int = 0, max_retries: int = 2) -> tuple[int, str]:
     """
     Generate Manim code with syntax validation only (runtime deferred to render).
+    
+    For logo scenes, generates simple logo display code.
+    For other scenes, uses LLM to generate code.
     
     Flow:
     1. Generate code
     2. Syntax validation
     3. Save
     """
+    scene_id = scene.get("scene_id", 1)
+    scene_type = scene.get("type", "manim")
+    
+    # Handle logo scenes specially
+    if scene_type == "logo":
+        logger.info(f"Scene {scene_id}: Generating logo scene code", extra={'progress': True})
+        manim_code = generate_logo_scene_code(scene)
+        return (scene_id, manim_code)
+    
+    # Regular manim scene generation
     prompt_path = PROMPTS_DIR / "manim_generator.txt"
     prompt_template = prompt_path.read_text(encoding="utf-8")
     

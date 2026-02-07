@@ -1,6 +1,6 @@
 """
 Stage 1 Doctor Ad: Plan scenes for HCP-focused promotional video.
-Mix of Manim (scientific) + 1 Pexels (closing visual).
+Mix of Manim (scientific) + 1 Logo (closing branding).
 """
 from pathlib import Path
 from app.utils.llm import call_llm
@@ -16,7 +16,6 @@ def generate_doctor_scenes(
     indication: str,
     moa_summary: str = "",
     clinical_data: str = "",
-    pexels_query: str = "doctor consultation",
     logo_path: str | None = None,
     image_paths: list[str] | None = None,
     reference_docs: str | None = None
@@ -29,8 +28,7 @@ def generate_doctor_scenes(
         indication: Medical indication
         moa_summary: Optional mechanism summary
         clinical_data: Optional clinical trial data
-        pexels_query: Query for final Pexels scene
-        logo_path: Optional path to brand logo for inclusion in scenes
+        logo_path: Path to company logo for final scene
         image_paths: Optional list of paths to images that can be referenced in scenes
         reference_docs: Optional text from documents to inform scene planning
     
@@ -41,7 +39,7 @@ def generate_doctor_scenes(
             "drug_name": "...",
             "scenes": [
                 {"scene_id": 1, "type": "manim", "duration_sec": 10, ...},
-                {"scene_id": 2, "type": "pexels", "duration_sec": 6, "pexels_query": "..."}
+                {"scene_id": 2, "type": "logo", "duration_sec": 6, "tagline": "..."}
             ]
         }
     """
@@ -64,8 +62,6 @@ def generate_doctor_scenes(
         context += f"\nLogo: {logo_path}"
     if image_paths:
         context += f"\nImages: {', '.join(image_paths)}"
-    if pexels_query:
-        context += f"\nPexels Query: {pexels_query}"
     if context:
         prompt_template += f"\n\nCONTEXT:\n{context}"
     
@@ -95,22 +91,22 @@ def generate_doctor_scenes(
         scenes_data["reference_docs"] = reference_docs[:6000]  # Store a truncated version for reference
     
 
-    # Ensure last scene is Pexels
+    # Ensure last scene is Logo
     scenes = scenes_data["scenes"]
-    if scenes and scenes[-1]["type"] != "pexels":
-        # Add Pexels closing scene if missing
-        logger.warning("No Pexels scene found, adding closing scene")
+    if scenes and scenes[-1]["type"] != "logo":
+        # Add Logo closing scene if missing
+        logger.warning("No Logo scene found, adding closing scene")
         scenes.append({
             "scene_id": len(scenes) + 1,
-            "type": "pexels",
+            "type": "logo",
             "duration_sec": 6,
-            "concept": "Professional closing",
-            "pexels_query": pexels_query,
+            "concept": "Company branding closure",
+            "tagline": "Innovating Healthcare Solutions",
             "narration_key_points": [
                 "Contact your medical representative for more information"
             ]
         })
     
-    logger.info(f"Generated {len(scenes)} scenes ({len([s for s in scenes if s['type']=='manim'])} Manim, {len([s for s in scenes if s['type']=='pexels'])} Pexels)")
+    logger.info(f"Generated {len(scenes)} scenes ({len([s for s in scenes if s['type']=='manim'])} Manim, {len([s for s in scenes if s['type']=='logo'])} Logo)")
     
     return scenes_data

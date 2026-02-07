@@ -120,12 +120,11 @@ class CreateComplianceRequest(BaseModel):
     tone: str = "formal and precise"
 
 class CreateDoctorRequest(BaseModel):
-    """Doctor-facing HCP promotional video using Manim + Pexels."""
+    """Doctor-facing HCP promotional video using Manim + Logo."""
     drug_name: str
     indication: str
     moa_summary: str = ""
     clinical_data: str = ""
-    pexels_query: str = "doctor consultation"
     persona: str = "professional medical narrator"
     tone: str = "scientific and professional"
     quality: str = "low"
@@ -582,7 +581,7 @@ async def create_moa_video(
         tone=tone,
         quality=quality,
         user_id=user_id,
-        video_id=None,
+        # video_id=None,
         documents=documents,
         logo=logo,
         images=images,
@@ -594,7 +593,7 @@ async def create_doctor_video(
     indication: str = Form(...),
     moa_summary: str = Form(""),
     clinical_data: str = Form(""),
-    pexels_query: str = Form("doctor consultation"),
+    pexels_query: str = Form("doctor consultation"),  # Deprecated but kept for backward compatibility
     persona: str = Form("professional medical narrator"),
     tone: str = Form("scientific and professional"),
     quality: str = Form("low"),
@@ -635,13 +634,22 @@ async def create_doctor_video(
     stage_logger = StageLogger("Doctor Scene Planning")
     stage_logger.start()
 
+    # Save logo file if provided
+    logo_path = None
+    if valid_logo:
+        logo_dir = VIDEOS_DIR / video_id / "logo"
+        logo_dir.mkdir(parents=True, exist_ok=True)
+        logo_path = logo_dir / valid_logo.filename
+        with open(logo_path, "wb") as f:
+            f.write(await valid_logo.read())
+        logger.info(f"Saved logo: {logo_path}")
+
     scenes_data = generate_doctor_scenes(
         drug_name=drug_name,
         indication=indication,
         moa_summary=moa_summary,
         clinical_data=clinical_data,
-        pexels_query=pexels_query,
-        logo_path=valid_logo.filename if valid_logo else None,
+        logo_path=str(logo_path) if logo_path else None,
         image_paths=[img.filename for img in valid_images],
         reference_docs=extract_documents_text(valid_docs) if valid_docs else None
     )
@@ -652,18 +660,17 @@ async def create_doctor_video(
     if not scenes:
         raise HTTPException(500, "No scenes generated")
 
-    pexels_media = run_stage3_pexels(scenes_data, video_id)
+    # Handle logo scene info
+    logo_info = run_stage3_pexels(scenes_data, video_id, str(logo_path) if logo_path else None)
 
+    # Inject logo path into logo scenes
     for scene in scenes:
-        if scene.get("type") == "pexels":
+        if scene.get("type") == "logo":
             scene_id = scene["scene_id"]
-            media = pexels_media.get(scene_id, {})
-            image_path = media.get("image", {}).get("local_path")
-            if image_path:
-                scene["pexels_image_path"] = image_path
-                scene["type"] = "manim"
-            else:
-                logger.warning(f"Scene {scene_id}: No Pexels image")
+            info = logo_info.get(scene_id, {})
+            if info.get("logo_path"):
+                scene["logo_path"] = info["logo_path"]
+            scene["tagline"] = info.get("tagline", "")
 
     stage_logger = StageLogger("Script Writing")
     stage_logger.start()
