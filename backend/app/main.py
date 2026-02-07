@@ -8,7 +8,7 @@ import time
 import os
 import shutil
 import uuid
-from typing import Annotated, Optional
+from typing import Annotated, Optional, List
 import mimetypes
 import logging
 import subprocess
@@ -36,7 +36,10 @@ import io
 
 # Logging setup
 from app.utils.logging_config import setup_logging, StageLogger
+from app.utils.video_utils import convert_to_portrait_9_16
 
+from app.utils.video_utils import convert_to_portrait_9_16
+from app.chat.routes import router as chat_router
 setup_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -191,9 +194,9 @@ ALLOWED_DOC_TYPES = {
 
 
 def filter_valid_files(
-    files: list[Union[UploadFile, str]] | None,
+    files: List[UploadFile] | None,
     allowed_types: set = None
-) -> list:
+) -> List[UploadFile]:
     """Filter out invalid items and return only valid `UploadFile` objects."""
     if allowed_types is None:
         allowed_types = ALLOWED_TYPES
@@ -204,19 +207,22 @@ def filter_valid_files(
     
     valid = []
     
-    if not files or not isinstance(files, list):
+    # Handle None input
+    if files is None:
+        return valid
+    
+    # Handle non-list input
+    if not isinstance(files, list):
+        return valid
+    
+    # Handle empty list
+    if not files:
         return valid
     
     logger.info(f"filter_valid_files: Processing {len(files)} items")
     
     for i, f in enumerate(files):
-        # Skip strings
-        if isinstance(f, str):
-            logger.info(f"  [{i}] -> Skipping: is a string")
-            continue
-        
-        # ✅ Check if it has the UploadFile interface (duck typing)
-        # This works for both fastapi.UploadFile and starlette.datastructures.UploadFile
+        # Check if it has the UploadFile interface
         if not hasattr(f, 'filename') or not hasattr(f, 'content_type') or not hasattr(f, 'file'):
             logger.info(f"  [{i}] -> Skipping: not an UploadFile-like object")
             continue
@@ -248,8 +254,9 @@ def filter_valid_files(
         else:
             logger.warning(f"  [{i}] ✗ REJECTED: {f.filename}, content_type={f.content_type}")
     
-    logger.info(f"filter_valid_files: Returning {len(valid)}/{len(files)} valid files")
+    logger.info(f"filter_valid_files: Returning {len(valid)} valid files")
     return valid
+
 
 def _call_sadtalker_service(audio_path: str, image_path: Optional[str], sadtalker_url: str) -> str:
     """
@@ -348,7 +355,7 @@ def _merge_videos_side_by_side(left_video: str, right_video: str, out_video: str
     except subprocess.CalledProcessError as e:
         raise HTTPException(500, f"ffmpeg merge failed: {e.stderr.decode('utf-8', errors='ignore')}")
 
-async def save_files(files: list[UploadFile] | None, target_dir: Path):
+async def save_files(files: List[UploadFile] | None, target_dir: Path):
     if not files:
         return []
 
@@ -381,6 +388,8 @@ async def save_files(files: list[UploadFile] | None, target_dir: Path):
 # ENDPOINTS - ALL FIXED
 # ---------------------------------------------------------------------
 
+app.include_router(chat_router)
+
 @app.post("/create")
 async def create_video(
     video_type: str = Form("product_ad"),
@@ -390,41 +399,42 @@ async def create_video(
     tone: str = Form("clear and reassuring"),
     logo: Optional[UploadFile] = File(None),
     image: Optional[UploadFile] = File(None),
-    documents: list[Union[UploadFile]] = File(default=[]),
+    documents: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings too
     user_id: Optional[str] = Form(None),
 ):
     pipeline_start = time.time()
     video_id = generate_video_id()
     
-    # ✅ DEBUG: Log raw input
-    logger.info(f"=== DOCUMENT UPLOAD DEBUG ===")
-    logger.info(f"documents parameter type: {type(documents)}")
-    logger.info(f"documents parameter length: {len(documents) if documents else 0}")
-    if documents:
-        for i, doc in enumerate(documents):
-            if isinstance(doc, str):
-                logger.info(f"  documents[{i}]: STRING = '{doc}'")
-            elif isinstance(doc, UploadFile):
-                logger.info(f"  documents[{i}]: UploadFile(filename={doc.filename}, content_type={doc.content_type})")
-            else:
-                logger.info(f"  documents[{i}]: {type(doc)}")
+    # ✅ Filter out strings and None, keep only UploadFile-like objects
+    docs = []
+    if documents is not None:
+        for d in documents:
+            # Skip strings
+            if isinstance(d, str):
+                continue
+            # Check if it has UploadFile interface (duck typing)
+            if hasattr(d, 'filename') and hasattr(d, 'file') and hasattr(d, 'content_type'):
+                if d.filename:  # Has a real filename
+                    docs.append(d)
     
     # ✅ FILTER FILES WITH CORRECT TYPES
     logos = [logo] if logo and logo.filename and logo.content_type else []
     images = [image] if image and image.filename and image.content_type else []
     
-    logger.info(f"Calling filter_valid_files with ALLOWED_DOC_TYPES={ALLOWED_DOC_TYPES}")
-    valid_docs = filter_valid_files(documents, allowed_types=ALLOWED_DOC_TYPES)
+    logger.info(f"DEBUG: Received {len(docs)} document(s) after filtering")
+    if docs:
+        for i, d in enumerate(docs):
+            logger.info(f"  Document {i}: {d.filename} ({d.content_type})")
+    
+    valid_docs = filter_valid_files(docs, allowed_types=ALLOWED_DOC_TYPES)
     
     logger.info(f"Valid logos: {len(logos)}, images: {len(images)}, docs: {len(valid_docs)}")
     
-    # ✅ DEBUG: Verify document extraction
+    # ✅ Extract document text
     if valid_docs:
         logger.info(f"Valid documents: {[d.filename for d in valid_docs]}")
         reference_text = extract_documents_text(valid_docs)
         logger.info(f"Extracted reference text: {len(reference_text)} characters")
-        if reference_text:
-            logger.info(f"First 300 chars of reference text: {reference_text[:300]}...")
     else:
         logger.info("No valid documents found after filtering")
         reference_text = ""
@@ -456,26 +466,25 @@ async def create_video(
     logger.info(f"Saved {len(logo_paths)} logos and {len(image_paths)} images")
 
     try:
-        # Stage 1 - USE reference_text (not valid_docs directly)
+        # Stage 1
         scenes_data = generate_scenes(
             topic=topic,
             video_type=video_type,
             brand_name=brand_name or "Our Brand",
-            reference_docs=reference_text,  # ✅ Use extracted text, not the file list
+            reference_docs=reference_text,
         )
 
         scenes = scenes_data.get("scenes", [])
         if not scenes:
             raise HTTPException(500, "No scenes generated")
 
-        # Script - USE reference_text
+        # Script
         script = generate_script(
             scenes,
             persona=persona,
             tone=tone,
-            reference_docs=reference_text if reference_text else None,  # ✅ Use extracted text
+            reference_docs=reference_text if reference_text else None,
         )
-
 
         # Stage 2
         run_stage2(
@@ -522,13 +531,32 @@ async def create_compliance_video(
     persona: str = Form("compliance officer"),
     tone: str = Form("formal and precise"),
     user_id: Optional[str] = Form(None),
-    documents: list[Union[UploadFile]] = File(default=[]),  # ✅ Accept both
+    documents: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings
     logo: Optional[UploadFile] = File(None),
-    images: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
+    images: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings
 ):
-    valid_docs = filter_valid_files(documents, allowed_types=ALLOWED_DOC_TYPES)
+    # ✅ Filter out strings using duck typing
+    docs = []
+    if documents is not None:
+        for d in documents:
+            if isinstance(d, str):
+                continue
+            if hasattr(d, 'filename') and hasattr(d, 'file') and hasattr(d, 'content_type'):
+                if d.filename:
+                    docs.append(d)
+    
+    imgs = []
+    if images is not None:
+        for i in images:
+            if isinstance(i, str):
+                continue
+            if hasattr(i, 'filename') and hasattr(i, 'file') and hasattr(i, 'content_type'):
+                if i.filename:
+                    imgs.append(i)
+    
+    valid_docs = filter_valid_files(docs, allowed_types=ALLOWED_DOC_TYPES)
     valid_logo = logo if logo and logo.filename and logo.content_type else None
-    valid_images = filter_valid_files(images, allowed_types=ALLOWED_TYPES)
+    valid_images = filter_valid_files(imgs, allowed_types=ALLOWED_TYPES)
     
     logger.info(f"Compliance: {len(valid_docs)} docs, logo: {valid_logo is not None}, {len(valid_images)} images")
 
@@ -558,25 +586,44 @@ async def create_moa_video(
     tone: str = Form("clear and educational"),
     quality: str = Form("low"),
     user_id: Optional[str] = Form(None),
-    documents: list[Union[UploadFile]] = File(default=[]),  # ✅ Accept both
+    documents: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings
     logo: Optional[UploadFile] = File(None),
-    images: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
+    images: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings
 ):
     pipeline_start = time.time()
     video_id = generate_video_id()
+    
+    # ✅ Filter out strings using duck typing
+    docs = []
+    if documents is not None:
+        for d in documents:
+            if isinstance(d, str):
+                continue
+            if hasattr(d, 'filename') and hasattr(d, 'file') and hasattr(d, 'content_type'):
+                if d.filename:
+                    docs.append(d)
+    
+    imgs = []
+    if images is not None:
+        for i in images:
+            if isinstance(i, str):
+                continue
+            if hasattr(i, 'filename') and hasattr(i, 'file') and hasattr(i, 'content_type'):
+                if i.filename:
+                    imgs.append(i)
 
-    valid_docs = filter_valid_files(documents, allowed_types=ALLOWED_DOC_TYPES)
+    valid_docs = filter_valid_files(docs, allowed_types=ALLOWED_DOC_TYPES)
     valid_logo = logo if logo and logo.filename and logo.content_type else None
-    valid_images = filter_valid_files(images, allowed_types=ALLOWED_TYPES)
+    valid_images = filter_valid_files(imgs, allowed_types=ALLOWED_TYPES)
 
     logger.info(f"MoA: {len(valid_docs)} docs, logo: {valid_logo is not None}, {len(valid_images)} images")
 
     return await create_doctor_video(
         drug_name=drug_name,
-        indication=condition,  # Map condition → indication
-        moa_summary="",  # MoA videos don't need separate summary
+        indication=condition,
+        moa_summary="",
         clinical_data="",
-        pexels_query="",  # MoA doesn't use Pexels by default
+        pexels_query="",
         persona=persona,
         tone=tone,
         quality=quality,
@@ -584,7 +631,7 @@ async def create_moa_video(
         # video_id=None,
         documents=documents,
         logo=logo,
-        images=images,
+        images=imgs,  # Pass the converted list
     )
 
 @app.post("/create-doctor")
@@ -598,10 +645,10 @@ async def create_doctor_video(
     tone: str = Form("scientific and professional"),
     quality: str = Form("low"),
     user_id: Optional[str] = Form(None),
-    # video_id: Optional[str] = Form(None),
-    documents: list[Union[UploadFile]] = File(default=[]),  # ✅ Accept both
+    video_id: Optional[str] = Form(None),
+    documents: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings
     logo: Optional[UploadFile] = File(None),
-    images: list[Union[UploadFile, str]] = File(default=[]),  # ✅ Accept both
+    images: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings
 ):
     from app.doctor_ad_stages.stage1_doctor_scenes import generate_doctor_scenes
     from app.doctor_ad_stages.stage2_doctor_manim import run_stage2_doctor
@@ -609,11 +656,31 @@ async def create_doctor_video(
     from app.doctor_ad_stages.stage5_doctor_render import render_doctor_video
 
     pipeline_start = time.time()
-    video_id = generate_video_id()
+    if not video_id:
+        video_id = generate_video_id()
+    
+    # ✅ Filter out strings using duck typing
+    docs = []
+    if documents is not None:
+        for d in documents:
+            if isinstance(d, str):
+                continue
+            if hasattr(d, 'filename') and hasattr(d, 'file') and hasattr(d, 'content_type'):
+                if d.filename:
+                    docs.append(d)
+    
+    imgs = []
+    if images is not None:
+        for i in images:
+            if isinstance(i, str):
+                continue
+            if hasattr(i, 'filename') and hasattr(i, 'file') and hasattr(i, 'content_type'):
+                if i.filename:
+                    imgs.append(i)
 
-    valid_docs = filter_valid_files(documents, allowed_types=ALLOWED_DOC_TYPES)
+    valid_docs = filter_valid_files(docs, allowed_types=ALLOWED_DOC_TYPES)
     valid_logo = logo if logo and logo.filename and logo.content_type else None
-    valid_images = filter_valid_files(images, allowed_types=ALLOWED_TYPES)
+    valid_images = filter_valid_files(imgs, allowed_types=ALLOWED_TYPES)
 
     logger.info(f"Doctor ad: {len(valid_docs)} docs, logo: {valid_logo is not None}, {len(valid_images)} images")
 
@@ -764,7 +831,7 @@ async def create_sm_video(
         # Stage 3: Fetch Pexels media
         pexels_media = run_stage3_sm_pexels(scenes_data, video_id)
 
-        # Inject Pexels media paths into scenes (attach whenever available)
+        # Inject Pexels media paths into scenes
         for scene in scenes:
             scene_id = scene.get("scene_id")
             if scene_id is None:
@@ -773,13 +840,11 @@ async def create_sm_video(
             image_path = media.get("image", {}).get("local_path")
             if image_path:
                 scene["pexels_image_path"] = image_path
-                # Ensure scene will be treated as a Manim scene so prompt can embed the image
                 scene["type"] = "manim"
             else:
-                # no image for this scene
                 logger.debug(f"Scene {scene_id}: No Pexels media attached")
 
-        # Stage: Script (reuse from main pipeline)
+        # Stage: Script
         stage_logger = StageLogger("Script Writing")
         stage_logger.start()
         
@@ -787,14 +852,14 @@ async def create_sm_video(
         
         stage_logger.complete(f"{len(script)} scripts generated")
         
-        # Stage 2: Manim code generation (optimized for SM)
+        # Stage 2: Manim code generation
         run_stage2_sm(scenes_data, script, video_id, max_workers=3)
         
-        # Stage 4: TTS (reuse)
+        # Stage 4: TTS
         scene_ids = [s["scene_id"] for s in scenes]
         tts_generate(script=script, video_id=video_id, scene_ids=scene_ids, max_workers=5)
         
-        # Stage 5: Render (SM optimized)
+        # Stage 5: Render
         final_path = render_sm_video(video_id, scenes_data, quality=quality)
         
         # Update DB
@@ -827,6 +892,7 @@ async def create_sm_remotion_video(
     brand_name: str = Form(""),
     persona: str = Form("friendly brand narrator"),
     tone: str = Form("engaging and conversational"),
+    quality: str = Form("high"),
     logo: Optional[UploadFile] = File(None),
     image: Optional[UploadFile] = File(None),
     # Optional Sadtalker integration
@@ -909,17 +975,19 @@ async def create_sm_remotion_video(
         scene_ids = [s["scene_id"] for s in scenes]
         tts_generate(script=script, video_id=video_id, scene_ids=scene_ids)
 
-        # Stage 6: Render
-        final_path = render_remotion(video_id)
+        # Stage 6: Render (landscape)
+        landscape_path = render_remotion(video_id)
 
-        # Optional: integrate with Sadtalker (external service)
-        final_output_path = final_path
+        current_final = landscape_path
+
+        # ──────────────────────────────────────────────
+        # Optional: SadTalker integration
+        # ──────────────────────────────────────────────
         if integrate_sadtalker:
-            logger.info(f"Integrating with Sadtalker at {sadtalker_url}")
+            logger.info(f"Integrating SadTalker at {sadtalker_url}")
 
-            # Save provided face/image for Sadtalker if present
             sadtalker_image_path = None
-            if sadtalker_image and sadtalker_image.filename and sadtalker_image.content_type:
+            if sadtalker_image and sadtalker_image.filename:
                 ext = Path(sadtalker_image.filename).suffix
                 s_name = f"sadtalker_{uuid.uuid4()}{ext}"
                 s_path = images_dir / s_name
@@ -927,45 +995,55 @@ async def create_sm_remotion_video(
                     shutil.copyfileobj(sadtalker_image.file, buf)
                 sadtalker_image_path = str(s_path)
 
-            # Extract audio from remotion final video for Sadtalker
             audio_path = assets_dir / "audio_for_sadtalker.wav"
             try:
                 subprocess.run([
-                    "ffmpeg", "-y", "-i", str(final_path), "-vn",
+                    "ffmpeg", "-y", "-i", str(landscape_path), "-vn",
                     "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2",
                     str(audio_path)
-                ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Failed to extract audio for Sadtalker: {e.stderr.decode('utf-8', errors='ignore')}")
-                raise HTTPException(500, "Failed to extract audio for Sadtalker (ffmpeg error)")
+                ], check=True, capture_output=True)
+            except subprocess.CalledProcessError as err:
+                logger.error(f"Audio extraction failed: {err.stderr.decode(errors='ignore')}")
+                raise HTTPException(500, "Failed to extract audio for SadTalker")
 
-            # Call Sadtalker service
             try:
-                sadtalker_video_path = _call_sadtalker_service(str(audio_path), sadtalker_image_path, sadtalker_url)
-            except HTTPException:
-                raise
+                sadtalker_video = _call_sadtalker_service(str(audio_path), sadtalker_image_path, sadtalker_url)
             except Exception as e:
-                logger.error(f"Sadtalker service call failed: {e}")
-                raise HTTPException(500, f"Sadtalker integration failed: {e}")
+                logger.exception("SadTalker failed")
+                raise HTTPException(500, f"SadTalker integration failed: {str(e)}")
 
-            # Merge original remotion video and Sadtalker video side-by-side
-            merged_path = VIDEOS_DIR / video_id / "final_sadtalker.mp4"
+            merged_path = VIDEOS_DIR / video_id / "final_sadtalker_merged.mp4"
             try:
-                _merge_videos_side_by_side(str(final_path), sadtalker_video_path, str(merged_path))
-            except HTTPException:
-                raise
+                _merge_videos_side_by_side(str(landscape_path), sadtalker_video, str(merged_path))
+                current_final = merged_path
+                logger.info(f"SadTalker merged video created: {merged_path}")
             except Exception as e:
-                logger.error(f"Failed to merge videos: {e}")
-                raise HTTPException(500, f"Video merge failed: {e}")
+                logger.exception("Side-by-side merge failed")
+                # keep landscape as fallback
+                current_final = landscape_path
 
-            final_output_path = merged_path
+        # ──────────────────────────────────────────────
+        # FINAL STEP: Convert to 9:16 portrait (for Reels/Shorts/TikTok)
+        # ──────────────────────────────────────────────
+        portrait_path = VIDEOS_DIR / video_id / "final_sm_rm_portrait.mp4"
 
-        # Update DB with final output path
+        try:
+            final_output_path = convert_to_portrait_9_16(
+                input_video=current_final,
+                output_video=portrait_path,
+                quality=quality,
+                target_width=1080          # you can make this dynamic later
+            )
+            logger.info(f"Portrait 9:16 version ready: {final_output_path}")
+        except Exception as e:
+            logger.warning(f"Portrait conversion failed → falling back to original: {e}")
+            final_output_path = current_final
+
+        # Update DB
         try:
             await db.update_video_state(video_id, state="complete", path=str(final_output_path))
         except Exception as e:
             logger.warning(f"DB update failed: {e}")
-
         total_time = time.time() - pipeline_start
 
         return {
@@ -973,11 +1051,13 @@ async def create_sm_remotion_video(
             "video_id": video_id,
             "video_type": "social_media_remotion",
             "video_path": str(final_output_path),
+            "is_portrait": final_output_path.name.endswith("_portrait.mp4"),
+            "used_sadtalker": integrate_sadtalker and bool(final_output_path.name == "final_sadtalker_merged.mp4" or "portrait" not in final_output_path.name),
             "elapsed_seconds": round(total_time, 1),
             "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s",
-            "platform_hint": "Instagram Reels, TikTok, YouTube Shorts"
+            "platform_hint": "Instagram Reels, TikTok, YouTube Shorts – 9:16 portrait optimized",
+            "quality_used": quality,
         }
-
     except Exception as e:
         logger.error(f"Social Media Remotion pipeline failed: {e}", extra={"stage": "PIPELINE ERROR"})
         raise HTTPException(500, f"Social Media Remotion render failed: {e}")
