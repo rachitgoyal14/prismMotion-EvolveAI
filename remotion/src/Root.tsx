@@ -37,30 +37,21 @@ export const Root: React.FC = () => {
     inputProps.scenes.length > 0
       ? (inputProps.scenes as PharmaVideoProps["scenes"])
       : defaultScenes;
+    
+    const branding = inputProps?.branding;
 
   return (
-    <>
-      {/* Existing marketing / pharma composition */}
-      <Composition
-        id="PharmaVideo"
-        component={PharmaVideo}
-        fps={FPS}
-        width={WIDTH}
-        height={HEIGHT}
-        defaultProps={{ scenes }}
-        calculateMetadata={calculateMetadata}
-      />
-
-      {/* NEW compliance composition - ADDED calculateMetadata */}
-      <Composition
-        id="ComplianceVideo"
-        component={ComplianceVideo}
-        fps={FPS}
-        width={WIDTH}
-        height={HEIGHT}
-        defaultProps={{ scenes }}
-        calculateMetadata={calculateMetadata}  // ← ADD THIS LINE
-      />
-    </>
+    <Composition
+      id="PharmaVideo"
+      component={PharmaVideo}
+      fps={FPS}
+      width={WIDTH}
+      height={HEIGHT}
+      defaultProps={{
+        scenes,
+        branding
+      }}
+      calculateMetadata={calculateMetadata}
+    />
   );
 };
