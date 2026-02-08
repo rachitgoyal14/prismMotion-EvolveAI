@@ -30,7 +30,7 @@ async def test_creator_mode():
     print("=" * 60)
     print(f"Connecting to {uri}...\n")
     
-    async with websockets.connect(uri) as websocket:
+    async with websockets.connect(uri, open_timeout=30, close_timeout=30) as websocket:
         print("✅ Connected!\n")
         
         # ─────────────────────────────────────────────
@@ -204,21 +204,21 @@ async def test_automated_mode():
     print(f"Connecting to {uri}...\n")
     
     try:
-        async with websockets.connect(uri) as websocket:
+        # Increase timeout for slower connections
+        async with websockets.connect(uri, open_timeout=30, close_timeout=30) as websocket:
             print("✅ Connected!\n")
             
-            # Start session
+            # Start session with product_ad (same as /create endpoint)
             start_message = {
                 "action": "start",
-                "video_type": "social_media",
+                "video_type": "product_ad",
                 "payload": {
-                    "drug_name": "TestDrug",
-                    "indication": "hypertension",
-                    "key_benefit": "24-hour blood pressure control",
-                    "target_audience": "patients",
-                    "persona": "friendly health narrator",
-                    "tone": "engaging and conversational",
-                    "quality": "low",
+                    "topic": "Innovative heart medication with proven results",
+                    "brand_name": "CardioHealth",
+                    "persona": "professional narrator",
+                    "tone": "clear and reassuring",
+                    "region": "global",
+                    "language": "english",
                 }
             }
             
