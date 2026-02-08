@@ -27,7 +27,9 @@ from fastapi import (
     File,
     UploadFile,
     Form,
-    Depends
+    Depends,
+    WebSocket,
+    WebSocketDisconnect
 )
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,6 +44,7 @@ from app.utils.video_utils import convert_to_portrait_9_16
 # from app.utils.video_utils import convert_to_portrait_9_16
 
 from app.chat.routes import router as chat_router
+from app.creator_mode import handle_creator_websocket
 setup_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -110,6 +113,7 @@ class CreateRequest(BaseModel):
     persona: str = "professional narrator"
     tone: str = "clear and reassuring"
     region: Optional[str] = None  # e.g., "india", "africa", "europe", "global"
+    language: Optional[str] = None  # e.g., "english", "spanish", "french", "hindi"
 
 class CreateMoARequest(BaseModel):
     """Mechanism of Action video using Manim."""
@@ -168,12 +172,16 @@ class CreateVideoForm:
         tone: str = Form("clear and reassuring"),
         logo: UploadFile | None = File(default=None),
         image: UploadFile | None = File(default=None),
+        language: str = Form("english"),
     ):
         self.video_type = video_type
         self.topic = topic
         self.brand_name = brand_name
         self.persona = persona
         self.tone = tone
+        self.logo = logo
+        self.image = image
+        self.language = language
 
         # Convert to lists internally
         self.logos = [logo] if logo else []
@@ -404,6 +412,7 @@ async def create_video(
     persona: str = Form("professional narrator"),
     tone: str = Form("clear and reassuring"),
     region: Optional[str] = Form(None),
+    language: Optional[str] = Form(None),
     logo: Optional[UploadFile] = File(None),
     image: Optional[UploadFile] = File(None),
     documents: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings too
@@ -492,6 +501,7 @@ async def create_video(
             persona=persona,
             tone=tone,
             reference_docs=reference_text if reference_text else None,
+            language=language or "english",
         )
 
         # Stage 2
@@ -509,7 +519,7 @@ async def create_video(
             logger.warning(f"Animation skipped: {e}")
 
         scene_ids = [s["scene_id"] for s in scenes]
-        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids, region=region)
+        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids, region=region, language=language or "english")
         final_path = render_remotion(video_id)
 
         # Update DB
@@ -1132,6 +1142,48 @@ def get_supported_regions():
         "usage": "Pass 'region' parameter to /create endpoint (e.g., region='india', region='africa')"
     }
 
+# ---------------------------------------------------------------------
+# CREATOR MODE - WebSocket Endpoint
+# ---------------------------------------------------------------------
+
+@app.websocket("/ws/creator")
+async def websocket_creator_endpoint(websocket: WebSocket):
+    """
+    Creator Mode WebSocket endpoint.
+    
+    Allows step-by-step control of video generation pipeline with
+    ability to accept or regenerate each stage.
+    
+    Protocol:
+    
+    Client → Server:
+        {"action": "start", "video_type": "...", "payload": {...}}
+        {"action": "accept"}
+        {"action": "regenerate", "feedback": "optional text"}
+        {"action": "stop"}
+    
+    Server → Client:
+        {"stage": "scenes", "status": "completed", "data": {...}, "next_actions": [...]}
+        {"stage": "scenes", "status": "error", "error": "...", "next_actions": [...]}
+        {"status": "pipeline_complete", "video_path": "..."}
+    
+    Stages executed in order:
+        1. scenes - Generate scene structure
+        2. script - Generate narration script  
+        3. visuals - Generate animations/compositions
+        4. animations - Additional animations (Remotion only)
+        5. tts - Generate audio
+        6. render - Produce final video
+    
+    State is kept in memory per WebSocket connection.
+    If disconnected, session is lost.
+    """
+    await handle_creator_websocket(websocket)
+
+# ---------------------------------------------------------------------
+# ROOT & INFO ENDPOINTS
+# ---------------------------------------------------------------------
+
 @app.get("/")
 def root():
     return {
@@ -1141,6 +1193,11 @@ def root():
                 "method": "GET",
                 "path": "/generate-user-id",
                 "description": "Generate a new user ID for tracking multiple videos"
+            },
+            "creator_mode": {
+                "method": "WebSocket",
+                "path": "/ws/creator",
+                "description": "Creator Mode - step-by-step video generation with manual control"
             }
         },
         "pipelines": {
