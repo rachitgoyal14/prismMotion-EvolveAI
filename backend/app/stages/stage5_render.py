@@ -185,7 +185,7 @@ def render_remotion(video_id: str) -> Path:
     final_path = out_dir / "final.mp4"
    
     cmd = [
-        "npx.cmd",  # This works cross-platform; subprocess will resolve .cmd on Windows if needed
+        "npx",  # This works cross-platform; subprocess will resolve .cmd on Windows if needed
         "remotion",
         "render",
         "src/index.ts",
