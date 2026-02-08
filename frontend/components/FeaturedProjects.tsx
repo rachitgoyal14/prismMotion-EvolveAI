@@ -13,7 +13,7 @@ const projects = [
   },
   {
     id: 3,
-    src: "/video1.mp4",
+    src: "/feat3.mp4",
     title: "Featured Project 3"
   },
 ];

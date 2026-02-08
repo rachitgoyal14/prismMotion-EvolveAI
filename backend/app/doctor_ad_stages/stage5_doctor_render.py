@@ -291,7 +291,7 @@ def render_doctor_video(video_id: str, scenes_data: dict, quality: str = "high")
     
     # Concatenate all
     logger.info(f"Concatenating {len(final_videos)} videos...", extra={'progress': True})
-    final_output = output_dir / "final_doctor.mp4"
+    final_output = output_dir / "final.mp4"
     concatenate_videos(final_videos, final_output)
     
     # Save report

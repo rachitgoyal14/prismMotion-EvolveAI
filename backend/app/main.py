@@ -86,6 +86,9 @@ app.add_middleware(
 
 VIDEOS_DIR = OUTPUTS_DIR / "videos"
 
+from fastapi.staticfiles import StaticFiles
+app.mount("/outputs", StaticFiles(directory=OUTPUTS_DIR), name="outputs")
+
 @app.on_event("startup")
 async def startup_event():
     try:
@@ -531,6 +534,7 @@ async def create_video(
             "video_id": video_id,
             "video_type": video_type,
             "video_path": str(final_path),
+            "video_url": f"/outputs/videos/{video_id}/final.mp4",
             "assets": {"logos": logo_paths, "images": image_paths},
             "elapsed_seconds": round(total_time, 1),
         }
@@ -798,6 +802,7 @@ async def create_doctor_video(
         "video_type": "doctor_ad",
         "drug_name": drug_name,
         "video_path": str(final_path),
+        "video_url": f"/outputs/videos/{video_id}/final.mp4",
         "elapsed_seconds": round(total_time, 1),
         "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s"
     }
@@ -912,6 +917,7 @@ async def create_sm_video(
             "video_type": "social_media",
             "drug_name": drug_name,
             "video_path": str(final_path),
+            "video_url": f"/outputs/videos/{video_id}/final.mp4",
             "elapsed_seconds": round(total_time, 1),
             "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s",
             "platform_hint": "Instagram Reels, TikTok, YouTube Shorts"
@@ -1061,7 +1067,7 @@ async def create_sm_remotion_video(
         # ──────────────────────────────────────────────
         # FINAL STEP: Convert to 9:16 portrait (for Reels/Shorts/TikTok)
         # ──────────────────────────────────────────────
-        portrait_path = VIDEOS_DIR / video_id / "final_sm_rm_portrait.mp4"
+        portrait_path = VIDEOS_DIR / video_id / "final.mp4"
 
         try:
             final_output_path = convert_to_portrait_9_16(
@@ -1087,6 +1093,7 @@ async def create_sm_remotion_video(
             "video_id": video_id,
             "video_type": "social_media_remotion",
             "video_path": str(final_output_path),
+            "video_url": f"/outputs/videos/{video_id}/final.mp4",
             "is_portrait": final_output_path.name.endswith("_portrait.mp4"),
             "used_sadtalker": integrate_sadtalker and bool(final_output_path.name == "final_sadtalker_merged.mp4" or "portrait" not in final_output_path.name),
             "elapsed_seconds": round(total_time, 1),

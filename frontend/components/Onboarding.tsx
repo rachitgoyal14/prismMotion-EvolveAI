@@ -25,6 +25,9 @@ const Onboarding: React.FC<OnboardingProps> = ({ onFinish }) => {
     assets: [] as File[],
   });
 
+  const [scrapedData, setScrapedData] = useState<any>(null);
+  const [isScraping, setIsScraping] = useState(false);
+
   const contextFileRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mouseRef = useRef({ x: 0, y: 0 });
@@ -121,11 +124,72 @@ const Onboarding: React.FC<OnboardingProps> = ({ onFinish }) => {
 
   const navigate = useNavigate();
 
-  const handleNext = () => {
+  const scrapeWebsite = async (url: string) => {
+    try {
+      setIsScraping(true);
+      const res = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`);
+      const data = await res.json();
+
+      if (data.status === 'success') {
+        const result = {
+          title: data.data.title,
+          description: data.data.description,
+          image: data.data.image?.url,
+          logo: data.data.logo?.url,
+          url: data.data.url
+        };
+
+        console.log("Scraped Data:", result);
+        setScrapedData(result);
+        localStorage.setItem("scraped_data", JSON.stringify(result));
+
+        // Auto-fill context if available and empty
+        if (result.description && !formData.context) {
+          setFormData(prev => ({ ...prev, context: result.description }));
+        }
+      }
+    } catch (error) {
+      console.error("Scraping failed:", error);
+    } finally {
+      setIsScraping(false);
+    }
+  };
+
+  const handleNext = async () => {
+    if (currentStep === 2 && formData.website) {
+      await scrapeWebsite(formData.website);
+    }
+
     if (currentStep < 4) {
       setCurrentStep(prev => prev + 1);
     } else {
       // Final step action (Finish/Continue)
+      try {
+        const userId = localStorage.getItem("user_id");
+        if (userId) {
+          const payload = new FormData();
+          payload.append("user_id", userId);
+
+          if (formData.logo) {
+            payload.append("logo", formData.logo);
+          }
+
+          if (formData.assets && formData.assets.length > 0) {
+            formData.assets.forEach(file => {
+              payload.append("assets", file);
+            });
+          }
+
+          // Send to backend - non-blocking for UI but we await to ensure it starts
+          await fetch("http://localhost:8000/onboarding/", {
+            method: "POST",
+            body: payload
+          });
+        }
+      } catch (error) {
+        console.error("Failed to upload onboarding assets:", error);
+      }
+
       onFinish(formData);
       navigate('/agent');
     }
@@ -425,12 +489,21 @@ const Onboarding: React.FC<OnboardingProps> = ({ onFinish }) => {
 
           <button
             onClick={handleNext}
-            className="flex items-center gap-2 text-sm font-bold text-white hover:text-emerald-200 transition-colors"
+            disabled={isScraping}
+            className={`flex items-center gap-2 text-sm font-bold text-white hover:text-emerald-200 transition-colors ${isScraping ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            {currentStep === 4 ? 'Finish' : 'Next'}
-            {currentStep !== 4 && <ArrowRight size={18} />}
+            {isScraping ? 'Analyzing...' : (currentStep === 4 ? 'Finish' : 'Next')}
+            {!isScraping && currentStep !== 4 && <ArrowRight size={18} />}
           </button>
         </div>
+
+        {/* Loading Overlay */}
+        {isScraping && (
+          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center animate-fade-in">
+            <div className="w-12 h-12 border-4 border-gray-200 border-t-[#006838] rounded-full animate-spin mb-4"></div>
+            <p className="text-[#006838] font-bold text-lg animate-pulse">Analyzing website...</p>
+          </div>
+        )}
 
       </div>
     </div>
