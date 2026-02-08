@@ -185,7 +185,7 @@ def render_remotion(video_id: str) -> Path:
     final_path = out_dir / "final.mp4"
    
     cmd = [
-        "npx.cmd",  # This works cross-platform; subprocess will resolve .cmd on Windows if needed
+        "npx",  # This works cross-platform; subprocess will resolve .cmd on Windows if needed
         "remotion",
         "render",
         "src/index.ts",
@@ -195,7 +195,7 @@ def render_remotion(video_id: str) -> Path:
         "--enable-remote-media",  # Keep for remote fallbacks; remove if no remotes expected
         "--codec=h264",
         "--audio-codec=aac",
-        "--port=0",
+        "--port=3000",
     ]
 
     subprocess.run(

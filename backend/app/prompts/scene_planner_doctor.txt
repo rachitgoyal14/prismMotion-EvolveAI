@@ -1,42 +1,245 @@
 You are a pharmaceutical medical education expert creating HCP-focused promotional videos.
 
 Create a scene-by-scene breakdown for a doctor-facing video about:
-Drug/Medicine: {drug_name}
-Indication: {indication}
-Target Audience: Healthcare Professionals (HCPs)
+- Drug/Medicine: {drug_name}
+- Indication: {indication}
+- Target Audience: Healthcare Professionals (HCPs)
 
-GUIDELINES:
-- Total: 5-7 scenes (60-90 seconds total)
-- Scenes 1-N-1: Manim animations (scientific, MoA, data)
-- Scene N (final): 1 Pexels visual (doctor/clinic closing shot)
+---
+
+## GUIDELINES
+
+- Total: 6-8 scenes (60-90 seconds total)
+- Scenes 1-N-2: Manim animations (scientific, MoA, data)
+- Scene N-1: Product image scene (showcase drug product)
+- Scene N (final): Logo scene (company branding closing shot)
 - Professional, evidence-based tone
 - Focus on efficacy, safety, dosing
 
-SCENE TYPES:
+---
 
-1. **Manim scenes** (type: "manim"):
-   - Mechanism of action
-   - Clinical trial data
-   - Dosing schedule
-   - Safety profile
-   - Disease pathway
+## SCENE TYPES
 
-2. **Pexels scene** (type: "pexels"):
-   - Final closing visual only
-   - Professional medical setting
-   - Example queries: "doctor consultation", "medical clinic", "healthcare professional"
+### 1. Manim scenes (type: "manim")
+- Mechanism of action
+- Clinical trial data
+- Dosing schedule
+- Safety profile
+- Disease pathway
 
-SCENE STRUCTURE:
+### 2. Product scene (type: "product")
+- Second-to-last scene
+- Display product packaging/bottle
+- Shows the actual drug product
+
+### 3. Logo scene (type: "logo")
+- Final closing scene only
+- Display company logo with optional tagline
+- Professional brand closure
+
+---
+
+## PNG LIBRARY (MANDATORY for Manim Scenes)
+
+**CRITICAL USAGE RULES:**
+- **MUST use a PNG visual for ALL Manim scenes** - no exceptions
+- **MANDATORY field: "png_path"** in every Manim scene
+- Value must be EXACTLY one of the paths below - copy character-by-character
+- **NEVER invent, modify, or create custom paths**
+- **NEVER use visual_elements field** - PNG is the complete visual
+- Use EXACTLY ONE PNG per scene
+- The PNG contains the COMPLETE medical diagram - do not describe additional shapes or custom graphics
+- If no suitable PNG exists, choose the closest anatomical/cellular match
+
+**Available PNG Paths:**
+
+**Anatomy - Cardiovascular:**
+```
+png_library/anatomy/cardiovascular/artery-anatomy.png
+png_library/anatomy/cardiovascular/blood-vessel.png
+png_library/anatomy/cardiovascular/circulatory-system.png
+png_library/anatomy/cardiovascular/heart-anatomy.png
+png_library/anatomy/cardiovascular/heart-silhouette.png
+png_library/anatomy/cardiovascular/vein-blood-vessel.png
+```
+
+**Anatomy - Dental:**
+```
+png_library/anatomy/dental/tooth-anatomy.png
+```
+
+**Anatomy - Digestive:**
+```
+png_library/anatomy/digestive/digestive-system.png
+png_library/anatomy/digestive/intestine-anatomy.png
+png_library/anatomy/digestive/intestine-silhouette.png
+png_library/anatomy/digestive/pancreas-anatomy.png
+png_library/anatomy/digestive/pancreas-silhouette.png
+png_library/anatomy/digestive/stomach-anatomy.png
+png_library/anatomy/digestive/stomach-silhouette.png
+png_library/anatomy/digestive/swallowing-system.png
+```
+
+**Anatomy - Integumentary:**
+```
+png_library/anatomy/integumentary/skin-layers-cross-section.png
+```
+
+**Anatomy - Muscular:**
+```
+png_library/anatomy/muscular/muscle-tissue.png
+```
+
+**Anatomy - Nervous:**
+```
+png_library/anatomy/nervous/brain-anatomy-side.png
+png_library/anatomy/nervous/brain-anatomy-top.png
+png_library/anatomy/nervous/neuron-anatomy.png
+png_library/anatomy/nervous/neuron-silhouette.png
+```
+
+**Anatomy - Respiratory:**
+```
+png_library/anatomy/respiratory/alveoli-lung-detail.png
+png_library/anatomy/respiratory/lungs-anatomy.png
+png_library/anatomy/respiratory/lungs-silhouette.png
+```
+
+**Anatomy - Sensory:**
+```
+png_library/anatomy/sensory/ear-anatomy.png
+png_library/anatomy/sensory/eye-anatomy.png
+```
+
+**Anatomy - Silhouettes:**
+```
+png_library/anatomy/silhouettes/full-body-outline-female-front-view.png
+png_library/anatomy/silhouettes/full-body-outline-male-front-view.png
+png_library/anatomy/silhouettes/full-body-outline-side-view.png
+png_library/anatomy/silhouettes/head-front-view.png
+png_library/anatomy/silhouettes/neck-front-view.png
+png_library/anatomy/silhouettes/torso-male-front-view.png
+```
+
+**Anatomy - Skeletal:**
+```
+png_library/anatomy/skeletal/adult-skeleton-front-view.png
+png_library/anatomy/skeletal/adult-skeleton-side-view.png
+png_library/anatomy/skeletal/child-skeleton.png
+png_library/anatomy/skeletal/elbow-joint-anatomy.png
+png_library/anatomy/skeletal/foetus-skeleton.png
+png_library/anatomy/skeletal/knee-joint-anatomy.png
+png_library/anatomy/skeletal/ribcage-anatomy.png
+png_library/anatomy/skeletal/ribcage-silhouette.png
+png_library/anatomy/skeletal/spine-anatomy.png
+png_library/anatomy/skeletal/spine-silhouette.png
+png_library/anatomy/skeletal/teenage-girl-skeleton.png
+```
+
+**Anatomy - Urinary:**
+```
+png_library/anatomy/urinary/kidney-anatomy-both.png
+png_library/anatomy/urinary/kidney-silhouette.png
+png_library/anatomy/urinary/nephron-kideny-detail.png
+```
+
+**Cellular - Blood:**
+```
+png_library/cellular/blood/plateletes.png
+png_library/cellular/blood/red-blood-cell.png
+png_library/cellular/blood/white-blood-cell.png
+```
+
+**Cellular - Cells:**
+```
+png_library/cellular/cells/cell-membrane.png
+png_library/cellular/cells/cell-wall.png
+png_library/cellular/cells/generalized-cell-diagram-labelled.png
+```
+
+**Cellular - Microorganisms:**
+```
+png_library/cellular/microorganisms/bacterium.png
+png_library/cellular/microorganisms/virus.png
+```
+
+**Cellular - Processes:**
+```
+png_library/cellular/processes/cell-division-mitosis.png
+```
+
+**Medical - Devices:**
+```
+png_library/medical/devices/injection.png
+png_library/medical/devices/iv-drip.png
+png_library/medical/devices/syringe.png
+```
+
+**Medical - Drugs:**
+```
+png_library/medical/drugs/capsules.png
+png_library/medical/drugs/tablets.png
+```
+
+**Medical - Symbols:**
+```
+png_library/medical/symbols/checkmark-positive-negative-effects.png
+png_library/medical/symbols/medical-plus.png
+png_library/medical/symbols/pain-indicator.png
+```
+
+**Molecular - Genetics:**
+```
+png_library/molecular/genetics/dna-helix-colored.png
+png_library/molecular/genetics/dna-helix-silhouette.png
+```
+
+**Molecular - Molecules:**
+```
+png_library/molecular/molecules/molecule-geometry.png
+```
+
+**Molecular - Proteins:**
+```
+png_library/molecular/proteins/protein.png
+png_library/molecular/proteins/x-shaped-antibody.png
+png_library/molecular/proteins/y-shaped-antibody.png
+```
+
+**Other:**
+```
+png_library/other/objects/banana.png
+```
+
+---
+
+## SCENE STRUCTURE
+
 Each scene needs:
-- scene_id: number (1, 2, 3...)
-- type: "manim" or "pexels"
-- duration_sec: 8-12 seconds
-- concept: brief description
-- visual_elements: list of elements to show (for manim) or pexels_query (for pexels)
-- narration_key_points: 2-3 bullet points for narrator
+- **scene_id**: number (1, 2, 3...)
+- **type**: "manim", "product", or "logo"
+- **duration_sec**: 8-12 seconds (manim), 6-8 seconds (product), 5-8 seconds (logo)
+- **concept**: brief description
+- **png_path**: (MANDATORY for "manim" type) - must be EXACTLY one of the paths from PNG LIBRARY above
+- **product_name**: (OPTIONAL for "product" type) - name of the product to display (e.g., drug name)
+- **tagline**: (OPTIONAL for "logo" type) - short company tagline/message (e.g., "Innovating Healthcare Solutions")
+- **narration_key_points**: 2-3 bullet points for narrator
 
-EXAMPLE OUTPUT:
+**CRITICAL:**
+- ALL "manim" scenes MUST include "png_path" field
+- DO NOT use "visual_elements" field - the PNG is the complete visual
+- DO NOT describe shapes, arrows, or custom graphics - only use provided PNGs
+- Scene order: Manim scenes → Product scene → Logo scene
+- Second-to-last scene should be "product" type
+- Final scene should be "logo" type
+- Product scene automatically uses uploaded product image
+- Logo scene automatically uses the uploaded company logo
 
+---
+
+## EXAMPLE OUTPUT
+
+```json
 {{
   "video_type": "doctor_ad",
   "drug_name": "...",
@@ -47,7 +250,7 @@ EXAMPLE OUTPUT:
       "type": "manim",
       "duration_sec": 10,
       "concept": "IL-17 pathway in psoriasis",
-      "visual_elements": ["epidermis", "IL-17 cytokine", "inflammatory cascade"],
+      "png_path": "png_library/anatomy/integumentary/skin-layers-cross-section.png",
       "narration_key_points": [
         "IL-17 drives inflammation in psoriasis",
         "Key target for biologic therapy"
@@ -57,25 +260,38 @@ EXAMPLE OUTPUT:
       "scene_id": 2,
       "type": "manim",
       "duration_sec": 10,
-      "concept": "PASI-90 efficacy data",
-      "visual_elements": ["bar chart", "58% response rate", "p<0.001"],
+      "concept": "Cellular immune response",
+      "png_path": "png_library/cellular/blood/white-blood-cell.png",
       "narration_key_points": [
-        "58% achieved PASI-90 at Week 16",
-        "Statistically significant vs placebo"
+        "White blood cells mediate immune response",
+        "Targeted by immunomodulatory therapy"
       ]
     }},
     {{
       "scene_id": 3,
-      "type": "pexels",
-      "duration_sec": 6,
-      "concept": "Professional closing",
-      "pexels_query": "MEDICINE: doctor consultation",
+      "type": "product",
+      "duration_sec": 7,
+      "concept": "Product showcase",
+      "product_name": "DrugName™",
       "narration_key_points": [
-        "Contact your medical representative",
+        "Available in convenient dosing options",
+        "Speak with your medical representative"
+      ]
+    }},
+    {{
+      "scene_id": 4,
+      "type": "logo",
+      "duration_sec": 6,
+      "concept": "Company branding closure",
+      "tagline": "Innovating Healthcare Solutions",
+      "narration_key_points": [
         "Full prescribing information available"
       ]
     }}
   ]
 }}
+```
 
-Return ONLY valid JSON in this exact format. No markdown, no explanations.
+---
+
+**Return ONLY valid JSON in this exact format. No markdown, no explanations.**

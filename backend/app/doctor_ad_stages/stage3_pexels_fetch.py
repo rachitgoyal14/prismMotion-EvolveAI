@@ -1,5 +1,6 @@
 """
-Stage 3 Doctor Ad: Fetch single Pexels asset for closing scene.
+Stage 3 Doctor Ad: Handle product and logo scenes.
+Product and logo will be handled in rendering stage using uploaded images.
 """
 from pathlib import Path
 from app.utils.pexels_client import get_media_for_scene, download_media
@@ -71,39 +72,69 @@ def fetch_pexels_closing(pexels_query: str, video_id: str, scene_id: int) -> dic
     return result
 
 
-def run_stage3_pexels(scenes_data: dict, video_id: str) -> dict:
+def run_stage3_pexels(scenes_data: dict, video_id: str, logo_path: str | None = None, product_image_path: str | None = None) -> dict:
     """
-    Fetch Pexels asset for the closing scene.
+    Handle product and logo scenes.
     
     Args:
-        scenes_data: Scene data with pexels scene(s)
+        scenes_data: Scene data with product and logo scene(s)
         video_id: Video ID
+        logo_path: Path to uploaded company logo
+        product_image_path: Path to uploaded product image
     
     Returns:
-        dict mapping scene_id to pexels media paths
+        dict with product and logo information
     """
     scenes = scenes_data.get("scenes", [])
     
-    # Find Pexels scenes
-    pexels_scenes = [s for s in scenes if s.get("type") == "pexels"]
+    # Find Product and Logo scenes
+    product_scenes = [s for s in scenes if s.get("type") == "product"]
+    logo_scenes = [s for s in scenes if s.get("type") == "logo"]
     
-    if not pexels_scenes:
-        logger.warning("No Pexels scenes found")
-        return {}
+    scene_info = {}
     
-    pexels_media = {}
+    # Handle product scenes
+    if product_scenes:
+        if product_image_path:
+            logger.info(f"Product scene will use uploaded product image: {product_image_path}")
+            for scene in product_scenes:
+                scene_id = scene["scene_id"]
+                scene_info[scene_id] = {
+                    "type": "product",
+                    "product_image_path": product_image_path,
+                    "product_name": scene.get("product_name", "")
+                }
+        else:
+            logger.warning("No product image uploaded, product scene will use placeholder")
+            for scene in product_scenes:
+                scene_id = scene["scene_id"]
+                scene_info[scene_id] = {
+                    "type": "product",
+                    "product_image_path": None,
+                    "product_name": scene.get("product_name", "")
+                }
     
-    for scene in pexels_scenes:
-        scene_id = scene["scene_id"]
-        query = scene.get("pexels_query", "doctor consultation")
-        
-        try:
-            media = fetch_pexels_closing(query, video_id, scene_id)
-            pexels_media[scene_id] = media
-        except Exception as e:
-            logger.error(f"Failed to fetch Pexels for scene {scene_id}: {e}")
-            continue
+    # Handle logo scenes
+    if logo_scenes:
+        if logo_path:
+            logger.info(f"Logo scene will use uploaded logo: {logo_path}")
+            for scene in logo_scenes:
+                scene_id = scene["scene_id"]
+                scene_info[scene_id] = {
+                    "type": "logo",
+                    "logo_path": logo_path,
+                    "tagline": scene.get("tagline", "")
+                }
+        else:
+            logger.warning("No logo uploaded, logo scene will use placeholder")
+            for scene in logo_scenes:
+                scene_id = scene["scene_id"]
+                scene_info[scene_id] = {
+                    "type": "logo",
+                    "logo_path": None,
+                    "tagline": scene.get("tagline", "")
+                }
     
-    logger.info(f"Fetched Pexels media for {len(pexels_media)} scene(s)")
+    logger.info(f"Prepared scene info for {len(scene_info)} scene(s) ({len(product_scenes)} product, {len(logo_scenes)} logo)")
     
-    return pexels_media
+    return scene_info
