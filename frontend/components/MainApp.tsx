@@ -350,7 +350,13 @@ const MainApp: React.FC<MainAppProps> = ({ userData, initialMode }) => {
       setMessages(prev => prev.map(msg => {
         if (msg.id === loadingMsgId) {
           if (response && response.video_id) {
-            const videoUrl = response.video_url || `http://localhost:8000/outputs/videos/${response.video_id}/final.mp4`;
+            let videoUrl = response.video_url || `http://localhost:8000/outputs/videos/${response.video_id}/final.mp4`;
+
+            // Fix: Ensure we use the backend port for relative URLs
+            if (videoUrl.startsWith('/')) {
+              videoUrl = `http://localhost:8000${videoUrl}`;
+            }
+
             startPolling(response.video_id, loadingMsgId, videoUrl); // Start polling with URL
             return {
               ...msg,

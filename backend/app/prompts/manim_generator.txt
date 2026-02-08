@@ -2,52 +2,150 @@ You are an expert in creating medical animations using Manim (Mathematical Anima
 
 Generate Manim code for a Mechanism of Action scene with these specifications:
 
+If scene_json contains a field "png_path":
+
+- Import ImageMobject from manim
+- Load the PNG using ImageMobject(scene_json["png_path"])
+- Do NOT recreate the diagram using shapes
+- Do NOT modify the PNG path
+- Center and scale the PNG appropriately
+
+If using png_path:
+
+- Resolve the PNG path relative to the project root using __file__
+- Assume png_library is located at app/png_library
+- Do NOT assume the current working directory
+- Handle transparency and opacity appropriately
+
+
+**PNG LOADING (CRITICAL FOR VISIBILITY):**
+
+After loading the PNG, you MUST handle sizing and positioning correctly.
+PNG files may have varying dimensions and transparency.
+
+Use EXACTLY this pattern after loading the PNG:
+
+```python
+png = ImageMobject(str(PNG_PATH))
+
+# Scale PNG to appropriate size (max 40% of frame height for diagrams)
+png.height = config.frame_height * 0.4
+# Center the PNG or position as needed
+png.move_to(ORIGIN)
+# Adjust opacity if needed (default 1.0 is usually fine for PNGs)
+png.set_opacity(1.0)
+```
+
+You can customize sizing based on the medical context:
+- For main diagrams: Use height = config.frame_height * 0.4 to 0.5
+- For small icons/symbols: Use height = config.frame_height * 0.15 to 0.25
+- For background elements: Use height = config.frame_height * 0.3 and set_opacity(0.6)
+- Always check if width exceeds frame_width * 0.8 and adjust accordingly
+
+DO NOT skip proper sizing - PNGs may be too large or too small without scaling!
+
+
+STRICTLY FOLLOW THIS (PNG PATH RESOLUTION – CRITICAL):
+
+When loading a PNG, you MUST resolve the path relative to the project root
+WITHOUT assuming a fixed directory depth.
+
+The project structure is:
+
+backend/
+ ├─ app/
+ │   └─ png_library/...
+ └─ outputs/
+     └─ manim/<video_id>/scenes/scene_X.py
+
+Manim scenes are executed from inside outputs/, NOT from backend/.
+
+Therefore, you MUST locate the directory that contains "app/" by walking
+upwards from __file__.
+
+Use EXACTLY this pattern:
+
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve()
+while not (BASE_DIR / "app").exists():
+    if BASE_DIR.parent == BASE_DIR:
+        raise RuntimeError("Could not locate backend/app directory")
+    BASE_DIR = BASE_DIR.parent
+
+PNG_PATH = BASE_DIR / "app" / scene_json["png_path"]
+
+png = ImageMobject(str(PNG_PATH))
+
+# Scale PNG appropriately
+png.height = config.frame_height * 0.4
+png.move_to(ORIGIN)
+
+DO NOT:
+- Assume current working directory
+- Use hard-coded parents[N]
+- Modify the PNG path string
+- Recreate the PNG using shapes
+- Skip proper sizing
+
+
 Scene Details:
 {scene_json}
 
-**CRITICAL LAYOUT RULES (NO OVERLAPPING, ALL ON SCREEN):**
+**CRITICAL LAYOUT RULES (BALANCED TECHNICAL + VISUAL):**
 
-1. **FRAME SAFE ZONES - Use these positioning rules:**
-   - Top safe zone: UP * 3 to UP * 2.5 (for titles)
-   - Upper-middle zone: UP * 2 to UP * 0.5 (for subtitles/descriptions)
-   - Center zone: UP * 0.5 to DOWN * 0.5 (for main content)
-   - Lower-middle zone: DOWN * 0.5 to DOWN * 2 (for captions)
-   - Bottom safe zone: DOWN * 2 to DOWN * 3 (for background images)
+1. **UPPER/LOWER SPLIT - TECHNICAL CONTEXT + VISUAL:**
+   - **UPPER 30-40%**: Text zone (title + 2-3 key technical points)
+   - **LOWER 50-60%**: Visual zone (PNG/graphs/charts - PRIMARY FOCUS)
+   - Text provides scientific context, visuals demonstrate concepts
 
-2. **PREVENT OVERLAPPING:**
-   - Always check if elements will overlap BEFORE positioning
-   - Use `.get_top()`, `.get_bottom()`, `.get_left()`, `.get_right()` to get boundaries
-   - Position new elements relative to existing ones using `.next_to()` with appropriaate buff (0.3-0.5)
-   - Keep minimum 0.3 units buffer between all elements
-   - Group related elements in VGroup and position the group as one unit
+2. **TEXT GUIDELINES (Technical but Efficient):**
+   - Title: Technical and specific, font_size=36-42
+   - 2-3 key points OR bullet items, font_size=26-30
+   - Each point: 10-15 words - technical terminology is fine
+   - Use medical/scientific terms (e.g., "PASI-90 response", "IL-17A inhibition")
+   - Maximum text width: `config.frame_width * 0.85`
+   - Keep text in UPPER portion, grouped cleanly
 
-3. **KEEP EVERYTHING ON SCREEN:**
-   - Maximum text width: `config.frame_width * 0.85` (leave 15% margins)
-   - Maximum element height: `config.frame_height * 0.25` per element
-   - Always use `.move_to()` or `.to_edge()` with buff parameter
-   - Check bounds: Element center should be within [-6.5, 6.5] horizontally, [-3.5, 3.5] vertically
-   - For text, set `width=config.frame_width * 0.8` to auto-wrap and prevent overflow
+3. **VISUAL SIZING (Prominent but not overwhelming):**
+   - PNG diagrams: `height = config.frame_height * 0.45 to 0.55` (45-55% of screen)
+   - Position PNGs: `png.shift(DOWN * 0.8 to DOWN * 1.2)`
+   - Charts/graphs: Also use 45-55% of screen height
+   - Visuals should be PRIMARY focus but allow room for technical text
 
-4. **POSITIONING TEMPLATE:**
+4. **POSITIONING TEMPLATE (BALANCED APPROACH):**
 ```python
-# Title (top safe zone)
-title = Text("Title", font="Sans", font_size=44, color=BLACK)
-title.to_edge(UP, buff=0.5)  # Keeps it on screen with 0.5 buffer
+# Technical title (top zone - ~8% of screen)
+title = Text("IL-17A Pathway Inhibition", font="Sans", font_size=40, color=BLACK)
+title.to_edge(UP, buff=0.3)
 
-# Subtitle (below title, no overlap)
-subtitle = Text("Subtitle", font="Sans", font_size=32, color=BLACK)
-subtitle.next_to(title, DOWN, buff=0.4)  # 0.4 buffer prevents overlap
+# Key technical points (2-3 bullets)
+point1 = Text("• Blocks inflammatory cytokine signaling", font="Sans", font_size=28, color=BLACK)
+point2 = Text("• Reduces keratinocyte proliferation", font="Sans", font_size=28, color=BLACK)
+point1.next_to(title, DOWN, buff=0.4).align_to(title, LEFT).shift(RIGHT * 0.5)
+point2.next_to(point1, DOWN, buff=0.3).align_to(point1, LEFT)
 
-# Main content (center zone, check width)
-content = Text("Content...", font="Sans", font_size=28, color=BLACK)
-if content.width > config.frame_width * 0.85:
-    content.width = config.frame_width * 0.85  # Prevent overflow
-content.next_to(subtitle, DOWN, buff=0.5)
+# Constrain width
+if point1.width > config.frame_width * 0.85:
+    point1.width = config.frame_width * 0.85
+if point2.width > config.frame_width * 0.85:
+    point2.width = config.frame_width * 0.85
 
-# Background image (bottom safe zone, won't overlap with text above)
-bg_image.height = config.frame_height * 0.35
-bg_image.to_edge(DOWN, buff=0)  # Anchored at bottom
+# MAIN VISUAL (lower zone - prominent 50% of screen)
+png.height = config.frame_height * 0.5  # Balanced with text
+png.shift(DOWN * 1.0)  # Position in lower half
+
+# If using background pexels image (subtle)
+bg_image.height = config.frame_height * 0.3
+bg_image.set_opacity(0.4)
+bg_image.to_edge(DOWN, buff=0)
 ```
+
+5. **PREVENT OVERLAPPING:**
+   - Keep minimum 0.5-0.8 units buffer between text group and visual
+   - Use VGroup for text elements to manage as unit: `text_group = VGroup(title, point1, point2)`
+   - Ensure PNG doesn't overlap with lowest text element
+   - Check: `point2.get_bottom()[1] - png.get_top()[1] >= 0.5` (0.5 unit buffer)
 
 **IMAGE HANDLING (CRITICAL FOR PEXELS IMAGES):**
 If the scene includes "pexels_image_path", follow these EXACT steps to avoid crashes:
@@ -96,12 +194,63 @@ self.play(
 - Never wrap ImageMobject in nested VGroups for FadeOut
 - Always use try/except for image loading
 
+**VISUAL-FIRST APPROACH (CRITICAL):**
+
+**PRIORITY: Balanced Technical Content with Strong Visuals**
+
+1. **TEXT GUIDELINES (Technical but Concise):**
+   - Use 2-4 text elements: title + 2-3 key points/labels
+   - Title: Concise but technical (e.g., "IL-17A Pathway Inhibition"), font_size=38-44
+   - Key points: 2-3 bullet points OR labels, font_size=26-32
+   - Each point: 10-15 words max - technical but not verbose
+   - Focus on mechanisms, data, clinical relevance
+   - Use medical/scientific terminology appropriately
+
+2. **LAYOUT STRATEGY - UPPER/LOWER SPLIT WITH CONTEXT:**
+   ```
+   ┌─────────────────────────────────┐
+   │  UPPER SECTION (Text + Context) │ ← Title + 2-3 key technical points
+   │  - Title at top                 │   (30-40% of screen height)
+   │  - 2-3 concise bullet points    │   Technical but readable
+   │  - or key labels/annotations    │
+   ├─────────────────────────────────┤
+   │                                 │
+   │  LOWER SECTION (Visual Focus)   │ ← PNG/Graph/Chart (PRIMARY FOCUS)
+   │  - PNG diagrams (large)         │   (50-60% of screen height)
+   │  - Graphs/Charts (prominent)    │
+   │  - Visual reinforces text       │
+   │                                 │
+   └─────────────────────────────────┘
+   ```
+
+3. **POSITIONING RULES:**
+   - Title: `title.to_edge(UP, buff=0.3)` (top ~8% of screen)
+   - Key points: Positioned below title with `next_to(title, DOWN, buff=0.4)`
+   - Group text elements in VGroup if needed for clean layout
+   - PNG/Visual: `png.shift(DOWN * 0.8 to DOWN * 1.2)` (occupy bottom 50-60%)
+   - PNG sizing: Use `height = config.frame_height * 0.45 to 0.55` for main visuals
+   - Keep 0.5-0.8 units buffer between text group and visual
+
+4. **VISUAL ELEMENTS TO PRIORITIZE:**
+   - Always use PNG from png_path if provided (large and clear)
+   - Add graphs/charts for data (BarChart, NumberPlane, line graphs)
+   - Use arrows, lines to show flow/mechanisms
+   - Add labels/annotations on visuals if needed (small, non-intrusive)
+   - Visuals should be the PRIMARY focus - text provides context
+
+5. **TECHNICAL CONTENT BALANCE:**
+   - Text explains WHAT (mechanism, data, outcome)
+   - Visual shows HOW (diagram, pathway, results)
+   - Together they provide complete technical understanding
+   - Avoid redundancy - don't repeat in text what visual clearly shows
+
 Requirements:
 - Use WHITE background (self.camera.background_color = WHITE)
 - NO LaTeX fonts - use simple sans-serif text
-- Clean, minimal medical illustration style
+- Clean, professional medical illustration style
 - Duration: {duration} seconds
 - Visual elements: {visual_elements}
+- **REMEMBER: Strong visuals + concise technical text = effective medical education**
 
 CRITICAL IMPORT RULES - YOU MUST FOLLOW THESE:
 1. ALWAYS start with: from manim import *
@@ -142,10 +291,11 @@ Manim Best Practices:
 - Use self.camera.background_color = WHITE (not config.background_color)
 - For text colors on white background, use BLACK or dark colors
 
-CORRECT Example WITH IMAGE AND NO OVERLAPPING:
+CORRECT Example - BALANCED TECHNICAL + VISUAL:
 ```python
 from manim import *
 from manim import config
+from pathlib import Path
 
 class Scene{scene_id}(Scene):
     def construct(self):
@@ -154,73 +304,119 @@ class Scene{scene_id}(Scene):
         
         # Define custom colors
         medical_blue = "#2E86AB"
-        medical_red = "#A23B72"
+        medical_green = "#4CAF50"
         
-        # Load background image SAFELY (bottom zone)
+        # Resolve PNG path
+        BASE_DIR = Path(__file__).resolve()
+        while not (BASE_DIR / "app").exists():
+            if BASE_DIR.parent == BASE_DIR:
+                raise RuntimeError("Could not locate backend/app directory")
+            BASE_DIR = BASE_DIR.parent
+        
+        PNG_PATH = BASE_DIR / "app" / "png_library/anatomy/integumentary/skin-layers-cross-section.png"
+        
+        # Optional: Load background pexels image (subtle)
         try:
-            bg_image = ImageMobject("/path/to/image.jpg")
-            bg_image.height = config.frame_height * 0.35  # 35% max
-            bg_image.set_opacity(0.6)
+            bg_image = ImageMobject("/path/to/pexels.jpg")
+            bg_image.height = config.frame_height * 0.3
+            bg_image.set_opacity(0.4)
             bg_image.to_edge(DOWN, buff=0)
-        except Exception as e:
-            bg_image = Rectangle(
-                width=config.frame_width,
-                height=config.frame_height * 0.35,
-                fill_color=BLUE_E,
-                fill_opacity=0.2,
-                stroke_width=0
-            ).to_edge(DOWN, buff=0)
+            self.add(bg_image)
+        except:
+            pass  # Skip if no background image
         
-        # Add image WITHOUT FadeIn (more stable)
-        self.add(bg_image)
-        self.play(bg_image.animate.set_opacity(0.7), run_time=1)
+        # TECHNICAL TEXT (upper 35%)
+        title = Text("IL-17A Pathway in Psoriasis", font="Sans", font_size=38, color=BLACK)
+        title.to_edge(UP, buff=0.3)
         
-        # Title (top safe zone - no overlap with image)
-        title = Text("Medical Title", font="Sans", font_size=44, color=BLACK)
-        title.to_edge(UP, buff=0.5)  # Safe distance from top edge
+        # Key technical points
+        point1 = Text("• IL-17A induces keratinocyte hyperproliferation", 
+                     font="Sans", font_size=28, color=BLACK)
+        point2 = Text("• Drives inflammatory cytokine cascade", 
+                     font="Sans", font_size=28, color=BLACK)
         
-        # Description (below title with buffer)
-        description = Text("Description text here", font="Sans", font_size=32, color=BLACK)
-        description.next_to(title, DOWN, buff=0.4)  # 0.4 buffer prevents overlap
+        point1.next_to(title, DOWN, buff=0.4).to_edge(LEFT, buff=0.8)
+        point2.next_to(point1, DOWN, buff=0.3).align_to(point1, LEFT)
         
-        # Ensure description width doesn't overflow
-        if description.width > config.frame_width * 0.85:
-            description.width = config.frame_width * 0.85
+        # Constrain widths
+        if point1.width > config.frame_width * 0.85:
+            point1.width = config.frame_width * 0.85
+        if point2.width > config.frame_width * 0.85:
+            point2.width = config.frame_width * 0.85
         
-        # Animate (everything is in its own space)
-        self.play(Write(title))
-        self.wait(0.5)
-        self.play(Write(description))
-        self.wait(2)
+        # MAIN VISUAL - PNG (lower 50%, PRIMARY FOCUS)
+        png = ImageMobject(str(PNG_PATH))
+        png.height = config.frame_height * 0.48  # Balanced (48% of screen)
+        png.shift(DOWN * 1.0)  # Position in lower half
         
-        # Fade out separately
+        # Animate - balance between text and visual
+        self.play(Write(title), run_time=0.8)
+        self.wait(0.3)
         self.play(
-            FadeOut(title),
-            FadeOut(description),
-            FadeOut(bg_image),
+            FadeIn(point1, shift=DOWN*0.2),
+            FadeIn(point2, shift=DOWN*0.2),
             run_time=1
         )
         self.wait(0.5)
+        self.play(FadeIn(png, scale=0.9), run_time=1.2)
+        self.wait(2)
+        
+        # Optional: Add indicator arrow
+        arrow = Arrow(
+            start=point2.get_bottom() + DOWN * 0.2,
+            end=png.get_top() + UP * 0.1,
+            color=medical_blue,
+            stroke_width=3
+        )
+        self.play(GrowArrow(arrow), run_time=0.5)
+        self.wait(1.5)
+        
+        # Fade out
+        self.play(
+            FadeOut(title),
+            FadeOut(point1),
+            FadeOut(point2),
+            FadeOut(arrow),
+            FadeOut(png),
+            run_time=1
+        )
+        self.wait(0.3)
 ```
 
 WRONG - DO NOT DO THIS:
 ```python
-# ❌ Elements will overlap
-title.move_to(ORIGIN)
-subtitle.move_to(ORIGIN)  # Same position!
+# ❌ Too much text - verbose paragraphs
+title = Text("Comprehensive Analysis of IL-17A Pathway Mechanism...")  # Too long!
+description = Text("The interleukin pathway functions through...")  # Paragraph!
+more_text = Text("Additional detailed explanation...")  # Too many elements!
 
-# ❌ Text might overflow screen
-long_text = Text("Very long text...", font_size=48)  # No width constraint
+# ❌ Too little text - no context
+title = Text("Pathway")  # Too vague, not technical enough
 
-# ❌ Image too large, overlaps with text
-bg_image.height = config.frame_height * 0.8  # Takes 80% of screen!
+# ❌ PNG too small - not prominent enough
+png.height = config.frame_height * 0.25  # Only 25%! Should be 45-55%
 
-# ✅ CORRECT ways:
-title.to_edge(UP, buff=0.5)
-subtitle.next_to(title, DOWN, buff=0.4)  # Positioned relative to title
-if long_text.width > config.frame_width * 0.85:
-    long_text.width = config.frame_width * 0.85  # Constrain width
-bg_image.height = config.frame_height * 0.35  # Leaves 65% for other content
+# ❌ Text in center/lower area blocking visual
+description.move_to(ORIGIN)  # Text blocking visual zone!
+
+# ❌ No technical terminology - too simplified
+point1 = Text("• Makes skin better")  # Not scientific!
+
+# ✅ CORRECT: Balanced technical text + prominent visual
+# 2-3 concise technical points (10-15 words each)
+title = Text("IL-17A Pathway in Psoriasis", font="Sans", font_size=38, color=BLACK)
+title.to_edge(UP, buff=0.3)
+
+point1 = Text("• IL-17A induces keratinocyte hyperproliferation", 
+             font="Sans", font_size=28, color=BLACK)
+point2 = Text("• Drives inflammatory cytokine cascade", 
+             font="Sans", font_size=28, color=BLACK)
+point1.next_to(title, DOWN, buff=0.4).to_edge(LEFT, buff=0.8)
+point2.next_to(point1, DOWN, buff=0.3).align_to(point1, LEFT)
+
+# Large, clear visual (45-55% of screen)
+png.height = config.frame_height * 0.48
+png.shift(DOWN * 1.0)
 ```
 
 Generate COMPLETE, WORKING Manim code for this scene. 
@@ -228,21 +424,201 @@ Generate COMPLETE, WORKING Manim code for this scene.
 VALIDATION CHECKLIST BEFORE RETURNING:
 ✓ Starts with "from manim import *"
 ✓ Imports config if using frame dimensions: "from manim import config"
+✓ If using PNG: Imports Path from pathlib
 ✓ Class name is Scene{scene_id}
 ✓ Uses self.camera.background_color = WHITE
+✓ If using PNG: Includes path resolution code with while loop
+✓ If using PNG: **Includes proper scaling with .height assignment (45-55% of frame height)**
+✓ **BALANCED: 2-4 text elements (title + 2-3 key technical points)**
+✓ **Text is technical but concise: 10-15 words per point, uses medical/scientific terms**
+✓ **PNG/Visual is prominent: height = 45-55% of frame_height**
+✓ **Layout: Text in upper 30-40%, Visual in lower 50-60%**
 ✓ All text uses color=BLACK (for white background)
-✓ All text has width constraint: `if element.width > config.frame_width * 0.85: element.width = config.frame_width * 0.85`
-✓ All elements positioned with buff parameter or .next_to() to prevent overlap
-✓ Background image height ≤ 35% of frame_height
-✓ Elements use safe zones (top for titles, bottom for images, center for content)
-✓ Minimum 0.3 units buffer between adjacent elements
-✓ If pexels_image_path exists: Uses try/except, .height (not scale_to_fit_width), self.add() then animate opacity
+✓ Text elements positioned with proper spacing: `title.to_edge(UP, buff=0.3)`, `point.next_to(...)`
+✓ Text constrained: `if text.width > config.frame_width * 0.85: text.width = config.frame_width * 0.85`
+✓ PNG positioned in lower half: `png.shift(DOWN * 0.8 to DOWN * 1.2)`
+✓ Minimum 0.5-0.8 units buffer between text group and visual
+✓ If pexels_image_path exists: Uses try/except, subtle opacity (0.3-0.5), max 30% height
 ✓ No nested VGroups around ImageMobject in FadeOut
 ✓ All animations use self.play() or self.wait()
 ✓ Code is syntactically valid Python
+✓ **Visual is PRIMARY focus, text provides technical context - balanced medical education**
 
 Return ONLY valid JSON:
 {{
   "scene_id": {scene_id},
   "manim_code": "from manim import *\\\\nfrom manim import config\\\\n\\\\nclass Scene{scene_id}(Scene):\\\\n    def construct(self):\\\\n        self.camera.background_color = WHITE\\\\n        ..."
 }}
+
+
+## PNG LIBRARY (MANDATORY for Manim Scenes)
+
+**CRITICAL USAGE RULES:**
+- **MUST use a PNG visual for ALL Manim scenes** - no exceptions
+- **MANDATORY field: "png_path"** in every Manim scene
+- Value must be EXACTLY one of the paths below - copy character-by-character
+- **NEVER invent, modify, or create custom paths**
+- **NEVER use visual_elements field** - PNG is the complete visual
+- Use EXACTLY ONE PNG per scene
+- The PNG contains the COMPLETE medical diagram - do not describe additional shapes or custom graphics
+- If no suitable PNG exists, choose the closest anatomical/cellular match
+
+**Available PNG Paths:**
+
+**Anatomy - Cardiovascular:**
+```
+png_library/anatomy/cardiovascular/artery-anatomy.png
+png_library/anatomy/cardiovascular/blood-vessel.png
+png_library/anatomy/cardiovascular/circulatory-system.png
+png_library/anatomy/cardiovascular/heart-anatomy.png
+png_library/anatomy/cardiovascular/heart-silhouette.png
+png_library/anatomy/cardiovascular/vein-blood-vessel.png
+```
+
+**Anatomy - Dental:**
+```
+png_library/anatomy/dental/tooth-anatomy.png
+```
+
+**Anatomy - Digestive:**
+```
+png_library/anatomy/digestive/digestive-system.png
+png_library/anatomy/digestive/intestine-anatomy.png
+png_library/anatomy/digestive/intestine-silhouette.png
+png_library/anatomy/digestive/pancreas-anatomy.png
+png_library/anatomy/digestive/pancreas-silhouette.png
+png_library/anatomy/digestive/stomach-anatomy.png
+png_library/anatomy/digestive/stomach-silhouette.png
+png_library/anatomy/digestive/swallowing-system.png
+```
+
+**Anatomy - Integumentary:**
+```
+png_library/anatomy/integumentary/skin-layers-cross-section.png
+```
+
+**Anatomy - Muscular:**
+```
+png_library/anatomy/muscular/muscle-tissue.png
+```
+
+**Anatomy - Nervous:**
+```
+png_library/anatomy/nervous/brain-anatomy-side.png
+png_library/anatomy/nervous/brain-anatomy-top.png
+png_library/anatomy/nervous/neuron-anatomy.png
+png_library/anatomy/nervous/neuron-silhouette.png
+```
+
+**Anatomy - Respiratory:**
+```
+png_library/anatomy/respiratory/alveoli-lung-detail.png
+png_library/anatomy/respiratory/lungs-anatomy.png
+png_library/anatomy/respiratory/lungs-silhouette.png
+```
+
+**Anatomy - Sensory:**
+```
+png_library/anatomy/sensory/ear-anatomy.png
+png_library/anatomy/sensory/eye-anatomy.png
+```
+
+**Anatomy - Silhouettes:**
+```
+png_library/anatomy/silhouettes/full-body-outline-female-front-view.png
+png_library/anatomy/silhouettes/full-body-outline-male-front-view.png
+png_library/anatomy/silhouettes/full-body-outline-side-view.png
+png_library/anatomy/silhouettes/head-front-view.png
+png_library/anatomy/silhouettes/neck-front-view.png
+png_library/anatomy/silhouettes/torso-male-front-view.png
+```
+
+**Anatomy - Skeletal:**
+```
+png_library/anatomy/skeletal/adult-skeleton-front-view.png
+png_library/anatomy/skeletal/adult-skeleton-side-view.png
+png_library/anatomy/skeletal/child-skeleton.png
+png_library/anatomy/skeletal/elbow-joint-anatomy.png
+png_library/anatomy/skeletal/foetus-skeleton.png
+png_library/anatomy/skeletal/knee-joint-anatomy.png
+png_library/anatomy/skeletal/ribcage-anatomy.png
+png_library/anatomy/skeletal/ribcage-silhouette.png
+png_library/anatomy/skeletal/spine-anatomy.png
+png_library/anatomy/skeletal/spine-silhouette.png
+png_library/anatomy/skeletal/teenage-girl-skeleton.png
+```
+
+**Anatomy - Urinary:**
+```
+png_library/anatomy/urinary/kidney-anatomy-both.png
+png_library/anatomy/urinary/kidney-silhouette.png
+png_library/anatomy/urinary/nephron-kideny-detail.png
+```
+
+**Cellular - Blood:**
+```
+png_library/cellular/blood/plateletes.png
+png_library/cellular/blood/red-blood-cell.png
+png_library/cellular/blood/white-blood-cell.png
+```
+
+**Cellular - Cells:**
+```
+png_library/cellular/cells/cell-membrane.png
+png_library/cellular/cells/cell-wall.png
+png_library/cellular/cells/generalized-cell-diagram-labelled.png
+```
+
+**Cellular - Microorganisms:**
+```
+png_library/cellular/microorganisms/bacterium.png
+png_library/cellular/microorganisms/virus.png
+```
+
+**Cellular - Processes:**
+```
+png_library/cellular/processes/cell-division-mitosis.png
+```
+
+**Medical - Devices:**
+```
+png_library/medical/devices/injection.png
+png_library/medical/devices/iv-drip.png
+png_library/medical/devices/syringe.png
+```
+
+**Medical - Drugs:**
+```
+png_library/medical/drugs/capsules.png
+png_library/medical/drugs/tablets.png
+```
+
+**Medical - Symbols:**
+```
+png_library/medical/symbols/checkmark-positive-negative-effects.png
+png_library/medical/symbols/medical-plus.png
+png_library/medical/symbols/pain-indicator.png
+```
+
+**Molecular - Genetics:**
+```
+png_library/molecular/genetics/dna-helix-colored.png
+png_library/molecular/genetics/dna-helix-silhouette.png
+```
+
+**Molecular - Molecules:**
+```
+png_library/molecular/molecules/molecule-geometry.png
+```
+
+**Molecular - Proteins:**
+```
+png_library/molecular/proteins/protein.png
+png_library/molecular/proteins/x-shaped-antibody.png
+png_library/molecular/proteins/y-shaped-antibody.png
+```
+
+**Other:**
+```
+png_library/other/objects/banana.png
+```

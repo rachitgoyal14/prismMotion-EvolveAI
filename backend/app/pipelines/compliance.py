@@ -115,5 +115,6 @@ def run_compliance_pipeline(
         "video_id": video_id,
         "video_type": payload["video_type"],
         "video_path": str(final_path),
+        "video_url": f"/outputs/videos/{video_id}/final.mp4",
         "elapsed_seconds": elapsed,
     }

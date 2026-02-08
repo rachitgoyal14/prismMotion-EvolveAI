@@ -1,5 +1,5 @@
 import os
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends,Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from typing import Optional
 import uuid
 
@@ -33,7 +33,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 @router.post("/upload-document", response_model=DocumentUploadResponse)
 async def upload_document(
-    user_id: str = Form(...),
+    user_id: str,
     file: UploadFile = File(...)
 ):
     """

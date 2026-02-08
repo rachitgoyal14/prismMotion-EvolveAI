@@ -202,5 +202,6 @@ def render_remotion(video_id: str) -> Path:
         cmd,
         cwd=REMOTION_DIR,
         check=True,
+        shell=True,
     )
     return final_path

@@ -98,12 +98,15 @@ def render_manim_scene_sm(
     quality_configs = {
         "low": {
             "flag": "-ql",  # 480p @ 15fps
+            "width": 480,
         },
         "medium": {
             "flag": "-qm",  # 720p @ 30fps
+            "width": 720,
         },
         "high": {
             "flag": "-qh",  # 1080p @ 60fps
+            "width": 1080,
         }
     }
     
@@ -169,9 +172,75 @@ def render_manim_scene_sm(
             logger.error(f"Scene {scene_id}: Rendered video not found at any expected path")
             logger.error(f"Scene {scene_id}: Output dir contents: {list(output_dir.iterdir()) if output_dir.exists() else 'N/A'}")
             return (scene_id, None)
-        
+
+        # Re-encode to portrait 9:16 using ffmpeg to ensure correct orientation/aspect
+        width = config.get("width", 480)
+        height = int(round(width * 16 / 9))
+        portrait_video = output_dir / f"scene_{scene_id}_portrait.mp4"
+
+        try:
+            # ────────────────────────────────────────────────
+            # Tunable parameters – adjust based on your Manim content
+            fg_scale_factor = 0.76       # 0.74 – 0.80; most Manim scenes need ~0.75–0.77
+            bg_blur_radius  = 60         # higher = more background blur
+            bg_blur_sigma   = 2.0
+            bg_brightness   = -0.08
+            bg_saturation   = 0.30
+            # ────────────────────────────────────────────────
+
+            fg_height = int(round(height * fg_scale_factor))
+
+            filter_complex = (
+                f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
+                f"crop={width}:{height},"
+                f"boxblur={bg_blur_radius}:{bg_blur_sigma},"
+                f"eq=brightness={bg_brightness}:saturation={bg_saturation}[bg];"
+                f"[0:v]scale=-2:{fg_height}[fg];"
+                f"[bg][fg]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2"
+            )
+
+            ff_cmd = [
+                "ffmpeg", "-y",
+                "-i", str(rendered_video),
+                "-filter_complex", filter_complex,
+                "-c:v", "libx264", "-crf", "23", "-preset", "veryfast",
+                "-c:a", "aac", "-b:a", "128k",
+                "-movflags", "+faststart",           # better streaming
+                str(portrait_video)
+            ]
+
+            logger.info(
+                f"Scene {scene_id}: Re-encoding to portrait {width}×{height} "
+                f"(fg_scale={fg_scale_factor}, blur={bg_blur_radius}:{bg_blur_sigma})"
+            )
+            # logger.debug(f"Filter complex: {filter_complex}")   # uncomment for debugging
+
+            r = subprocess.run(
+                ff_cmd,
+                capture_output=True,
+                text=True,
+                timeout=180,          # 3 minutes – should be plenty per scene
+                check=True
+            )
+
+            final_render_video = portrait_video
+            logger.info(f"Scene {scene_id}: Portrait video created → {portrait_video}")
+
+        except subprocess.CalledProcessError as err:
+            logger.error(
+                f"ffmpeg portrait encode failed (scene {scene_id}):\n"
+                f"{err.stderr[:800]}"   # show more of the error
+            )
+            final_render_video = rendered_video   # fallback to landscape version
+        except subprocess.TimeoutExpired:
+            logger.error(f"ffmpeg timeout (scene {scene_id})")
+            final_render_video = rendered_video
+        except Exception as e:
+            logger.error(f"Unexpected error in portrait conversion (scene {scene_id}): {e}")
+            final_render_video = rendered_video        
         logger.info(f"Scene {scene_id}: Render complete → {rendered_video}")
-        return (scene_id, rendered_video)
+        return (scene_id, final_render_video)
+
         
     except subprocess.TimeoutExpired:
         logger.error(f"Scene {scene_id}: Render timeout (5min limit)")
@@ -295,22 +364,20 @@ def render_sm_video(
         
         # Find and combine audio
         audio_file = audio_dir / f"scene_{scene_id}.wav"
-        if not audio_file.exists():
-            # Try .mp3 as fallback
-            audio_file = audio_dir / f"scene_{scene_id}.mp3"
-        
+        final_scene_video = output_dir / f"scene_{scene_id}_final.mp4"
+
         if audio_file.exists():
             try:
-                final_scene_video = output_dir / f"scene_{scene_id}_final.mp4"
                 combine_video_audio_sm(video_path, audio_file, final_scene_video)
                 final_videos.append(final_scene_video)
-                logger.info(f"Scene {scene_id}: Manim + audio combined ✓")
+                logger.info(f"Scene {scene_id}: Audio combined")
             except Exception as e:
                 logger.warning(f"Scene {scene_id}: Audio combine failed - {e}, using silent")
                 final_videos.append(video_path)
         else:
             logger.warning(f"Scene {scene_id}: No audio found, using silent")
             final_videos.append(video_path)
+
     
     if not final_videos:
         raise RuntimeError("No scenes rendered successfully")

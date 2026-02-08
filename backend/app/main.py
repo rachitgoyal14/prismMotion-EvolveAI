@@ -36,6 +36,11 @@ import io
 
 # Logging setup
 from app.utils.logging_config import setup_logging, StageLogger
+from app.utils.video_utils import convert_to_portrait_9_16
+
+# from app.utils.video_utils import convert_to_portrait_9_16
+# from app.utils.video_utils import convert_to_portrait_9_16
+
 from app.chat.routes import router as chat_router
 setup_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -60,9 +65,6 @@ from app.stages.stage5_render import render_remotion
 from app.moa_stages.stage1_moa_scenes import generate_moa_scenes
 from app.moa_stages.stage2_moa_manim import run_stage2_moa
 from app.moa_stages.stage5_moa_render import render_moa_video
-from app.onboarding.routes import router as onboarding_router
-
-
 
 from app.paths import OUTPUTS_DIR
 from app import db
@@ -70,16 +72,6 @@ from app import db
 # ---------------------------------------------------------------------
 
 app = FastAPI(title="Pharma Video Generator")
-app.include_router(onboarding_router)
-
-from fastapi.staticfiles import StaticFiles
-
-app.mount(
-    "/outputs",
-    StaticFiles(directory="app/outputs"),
-    name="outputs"
-)
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -90,6 +82,9 @@ app.add_middleware(
 )
 
 VIDEOS_DIR = OUTPUTS_DIR / "videos"
+
+from fastapi.staticfiles import StaticFiles
+app.mount("/outputs", StaticFiles(directory=OUTPUTS_DIR), name="outputs")
 
 @app.on_event("startup")
 async def startup_event():
@@ -114,6 +109,7 @@ class CreateRequest(BaseModel):
     brand_name: str = ""
     persona: str = "professional narrator"
     tone: str = "clear and reassuring"
+    region: Optional[str] = None  # e.g., "india", "africa", "europe", "global"
 
 class CreateMoARequest(BaseModel):
     """Mechanism of Action video using Manim."""
@@ -133,12 +129,11 @@ class CreateComplianceRequest(BaseModel):
     tone: str = "formal and precise"
 
 class CreateDoctorRequest(BaseModel):
-    """Doctor-facing HCP promotional video using Manim + Pexels."""
+    """Doctor-facing HCP promotional video using Manim + Logo."""
     drug_name: str
     indication: str
     moa_summary: str = ""
     clinical_data: str = ""
-    pexels_query: str = "doctor consultation"
     persona: str = "professional medical narrator"
     tone: str = "scientific and professional"
     quality: str = "low"
@@ -408,6 +403,7 @@ async def create_video(
     brand_name: str = Form(""),
     persona: str = Form("professional narrator"),
     tone: str = Form("clear and reassuring"),
+    region: Optional[str] = Form(None),
     logo: Optional[UploadFile] = File(None),
     image: Optional[UploadFile] = File(None),
     documents: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings too
@@ -483,6 +479,7 @@ async def create_video(
             video_type=video_type,
             brand_name=brand_name or "Our Brand",
             reference_docs=reference_text,
+            region=region,
         )
 
         scenes = scenes_data.get("scenes", [])
@@ -503,6 +500,7 @@ async def create_video(
             script,
             video_id,
             assets={"logos": logo_paths, "images": image_paths},
+            region=region,
         )
 
         try:
@@ -511,7 +509,7 @@ async def create_video(
             logger.warning(f"Animation skipped: {e}")
 
         scene_ids = [s["scene_id"] for s in scenes]
-        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids)
+        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids, region=region)
         final_path = render_remotion(video_id)
 
         # Update DB
@@ -525,6 +523,7 @@ async def create_video(
             "status": "complete",
             "video_id": video_id,
             "video_type": video_type,
+            "video_path": str(final_path),
             "video_url": f"/outputs/videos/{video_id}/final.mp4",
             "assets": {"logos": logo_paths, "images": image_paths},
             "elapsed_seconds": round(total_time, 1),
@@ -585,22 +584,6 @@ async def create_compliance_video(
         logo=valid_logo,
         images=valid_images,
     )
-    
-    # Assuming run_compliance_pipeline returns a dict with video_id and path
-    # We need to construct the standard response here if possible, 
-    # but run_compliance_pipeline might need adjustment or we trust it returns compatible structure.
-    # For now, let's assume it returns a path we can rename if needed, OR we just return what it has 
-    # but we should try to match the pattern if we can control it. 
-    # Since I cannot see run_compliance_pipeline, I will wrap the response to include video_url if path is present.
-    
-    # However, to be safe and strictly follow the instructions for KNOWN endpoints:
-    # The user instruction implies *I* should ensure the output filename. 
-    # I'll add a check if 'video_path' is in result, and rename it.
-    
-    if "video_path" in result and "video_id" in result:
-        vid = result["video_id"]
-        # Ensure we point to final.mp4
-        result["video_url"] = f"/outputs/videos/{vid}/final.mp4"
 
     return {"status": "ok", **result}
 
@@ -655,8 +638,8 @@ async def create_moa_video(
         tone=tone,
         quality=quality,
         user_id=user_id,
-        video_id=None,
-        documents=docs,  # Pass the converted list
+        # video_id=None,
+        documents=documents,
         logo=logo,
         images=imgs,  # Pass the converted list
     )
@@ -667,12 +650,11 @@ async def create_doctor_video(
     indication: str = Form(...),
     moa_summary: str = Form(""),
     clinical_data: str = Form(""),
-    pexels_query: str = Form("doctor consultation"),
+    pexels_query: str = Form("doctor consultation"),  # Deprecated but kept for backward compatibility
     persona: str = Form("professional medical narrator"),
     tone: str = Form("scientific and professional"),
     quality: str = Form("low"),
     user_id: Optional[str] = Form(None),
-    video_id: Optional[str] = Form(None),
     documents: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings
     logo: Optional[UploadFile] = File(None),
     images: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings
@@ -683,8 +665,7 @@ async def create_doctor_video(
     from app.doctor_ad_stages.stage5_doctor_render import render_doctor_video
 
     pipeline_start = time.time()
-    if not video_id:
-        video_id = generate_video_id()
+    video_id = generate_video_id()
     
     # ✅ Filter out strings using duck typing
     docs = []
@@ -728,14 +709,34 @@ async def create_doctor_video(
     stage_logger = StageLogger("Doctor Scene Planning")
     stage_logger.start()
 
+    # Save logo file if provided
+    logo_path = None
+    if valid_logo:
+        logo_dir = VIDEOS_DIR / video_id / "logo"
+        logo_dir.mkdir(parents=True, exist_ok=True)
+        logo_path = logo_dir / valid_logo.filename
+        with open(logo_path, "wb") as f:
+            f.write(await valid_logo.read())
+        logger.info(f"Saved logo: {logo_path}")
+
+    # Save product image if provided (first image is used as product image)
+    product_image_path = None
+    if valid_images:
+        product_dir = VIDEOS_DIR / video_id / "product"
+        product_dir.mkdir(parents=True, exist_ok=True)
+        product_image_path = product_dir / valid_images[0].filename
+        with open(product_image_path, "wb") as f:
+            f.write(await valid_images[0].read())
+        logger.info(f"Saved product image: {product_image_path}")
+
     scenes_data = generate_doctor_scenes(
         drug_name=drug_name,
         indication=indication,
         moa_summary=moa_summary,
         clinical_data=clinical_data,
-        pexels_query=pexels_query,
-        logo_path=valid_logo.filename if valid_logo else None,
-        image_paths=[img.filename for img in valid_images],
+        logo_path=str(logo_path) if logo_path else None,
+        product_image_path=str(product_image_path) if product_image_path else None,
+        image_paths=[img.filename for img in valid_images[1:]] if len(valid_images) > 1 else [],
         reference_docs=extract_documents_text(valid_docs) if valid_docs else None
     )
 
@@ -745,18 +746,28 @@ async def create_doctor_video(
     if not scenes:
         raise HTTPException(500, "No scenes generated")
 
-    pexels_media = run_stage3_pexels(scenes_data, video_id)
+    # Handle product and logo scene info
+    scene_info = run_stage3_pexels(
+        scenes_data, 
+        video_id, 
+        str(logo_path) if logo_path else None,
+        str(product_image_path) if product_image_path else None
+    )
 
+    # Inject paths into product and logo scenes
     for scene in scenes:
-        if scene.get("type") == "pexels":
-            scene_id = scene["scene_id"]
-            media = pexels_media.get(scene_id, {})
-            image_path = media.get("image", {}).get("local_path")
-            if image_path:
-                scene["pexels_image_path"] = image_path
-                scene["type"] = "manim"
-            else:
-                logger.warning(f"Scene {scene_id}: No Pexels image")
+        scene_id = scene["scene_id"]
+        info = scene_info.get(scene_id, {})
+        
+        if scene.get("type") == "product":
+            if info.get("product_image_path"):
+                scene["product_image_path"] = info["product_image_path"]
+            scene["product_name"] = info.get("product_name", drug_name)
+        
+        elif scene.get("type") == "logo":
+            if info.get("logo_path"):
+                scene["logo_path"] = info["logo_path"]
+            scene["tagline"] = info.get("tagline", "")
 
     stage_logger = StageLogger("Script Writing")
     stage_logger.start()
@@ -780,6 +791,7 @@ async def create_doctor_video(
         "video_id": video_id,
         "video_type": "doctor_ad",
         "drug_name": drug_name,
+        "video_path": str(final_path),
         "video_url": f"/outputs/videos/{video_id}/final.mp4",
         "elapsed_seconds": round(total_time, 1),
         "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s"
@@ -894,6 +906,7 @@ async def create_sm_video(
             "video_id": video_id,
             "video_type": "social_media",
             "drug_name": drug_name,
+            "video_path": str(final_path),
             "video_url": f"/outputs/videos/{video_id}/final.mp4",
             "elapsed_seconds": round(total_time, 1),
             "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s",
@@ -911,6 +924,7 @@ async def create_sm_remotion_video(
     brand_name: str = Form(""),
     persona: str = Form("friendly brand narrator"),
     tone: str = Form("engaging and conversational"),
+    quality: str = Form("high"),
     logo: Optional[UploadFile] = File(None),
     image: Optional[UploadFile] = File(None),
     # Optional Sadtalker integration
@@ -993,16 +1007,19 @@ async def create_sm_remotion_video(
         scene_ids = [s["scene_id"] for s in scenes]
         tts_generate(script=script, video_id=video_id, scene_ids=scene_ids)
 
-        # Stage 6: Render
-        final_path = render_remotion(video_id)
+        # Stage 6: Render (landscape)
+        landscape_path = render_remotion(video_id)
 
-        # Optional: integrate with Sadtalker
-        final_output_path = final_path
+        current_final = landscape_path
+
+        # ──────────────────────────────────────────────
+        # Optional: SadTalker integration
+        # ──────────────────────────────────────────────
         if integrate_sadtalker:
-            logger.info(f"Integrating with Sadtalker at {sadtalker_url}")
+            logger.info(f"Integrating SadTalker at {sadtalker_url}")
 
             sadtalker_image_path = None
-            if sadtalker_image and sadtalker_image.filename and sadtalker_image.content_type:
+            if sadtalker_image and sadtalker_image.filename:
                 ext = Path(sadtalker_image.filename).suffix
                 s_name = f"sadtalker_{uuid.uuid4()}{ext}"
                 s_path = images_dir / s_name
@@ -1013,52 +1030,67 @@ async def create_sm_remotion_video(
             audio_path = assets_dir / "audio_for_sadtalker.wav"
             try:
                 subprocess.run([
-                    "ffmpeg", "-y", "-i", str(final_path), "-vn",
+                    "ffmpeg", "-y", "-i", str(landscape_path), "-vn",
                     "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2",
                     str(audio_path)
-                ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Failed to extract audio for Sadtalker: {e.stderr.decode('utf-8', errors='ignore')}")
-                raise HTTPException(500, "Failed to extract audio for Sadtalker (ffmpeg error)")
+                ], check=True, capture_output=True)
+            except subprocess.CalledProcessError as err:
+                logger.error(f"Audio extraction failed: {err.stderr.decode(errors='ignore')}")
+                raise HTTPException(500, "Failed to extract audio for SadTalker")
 
             try:
-                sadtalker_video_path = _call_sadtalker_service(str(audio_path), sadtalker_image_path, sadtalker_url)
-            except HTTPException:
-                raise
+                sadtalker_video = _call_sadtalker_service(str(audio_path), sadtalker_image_path, sadtalker_url)
             except Exception as e:
-                logger.error(f"Sadtalker service call failed: {e}")
-                raise HTTPException(500, f"Sadtalker integration failed: {e}")
+                logger.exception("SadTalker failed")
+                raise HTTPException(500, f"SadTalker integration failed: {str(e)}")
 
-            merged_path = VIDEOS_DIR / video_id / "final_sadtalker.mp4"
+            merged_path = VIDEOS_DIR / video_id / "final_sadtalker_merged.mp4"
             try:
-                _merge_videos_side_by_side(str(final_path), sadtalker_video_path, str(merged_path))
-            except HTTPException:
-                raise
+                _merge_videos_side_by_side(str(landscape_path), sadtalker_video, str(merged_path))
+                current_final = merged_path
+                logger.info(f"SadTalker merged video created: {merged_path}")
             except Exception as e:
-                logger.error(f"Failed to merge videos: {e}")
-                raise HTTPException(500, f"Video merge failed: {e}")
+                logger.exception("Side-by-side merge failed")
+                # keep landscape as fallback
+                current_final = landscape_path
 
-            final_output_path = merged_path
+        # ──────────────────────────────────────────────
+        # FINAL STEP: Convert to 9:16 portrait (for Reels/Shorts/TikTok)
+        # ──────────────────────────────────────────────
+        portrait_path = VIDEOS_DIR / video_id / "final.mp4"
 
-            final_output_path = merged_path
+        try:
+            final_output_path = convert_to_portrait_9_16(
+                input_video=current_final,
+                output_video=portrait_path,
+                quality=quality,
+                target_width=1080          # you can make this dynamic later
+            )
+            logger.info(f"Portrait 9:16 version ready: {final_output_path}")
+        except Exception as e:
+            logger.warning(f"Portrait conversion failed → falling back to original: {e}")
+            final_output_path = current_final
 
+        # Update DB
         try:
             await db.update_video_state(video_id, state="complete", path=str(final_output_path))
         except Exception as e:
             logger.warning(f"DB update failed: {e}")
-
         total_time = time.time() - pipeline_start
 
         return {
             "status": "complete",
             "video_id": video_id,
             "video_type": "social_media_remotion",
+            "video_path": str(final_output_path),
             "video_url": f"/outputs/videos/{video_id}/final.mp4",
+            "is_portrait": final_output_path.name.endswith("_portrait.mp4"),
+            "used_sadtalker": integrate_sadtalker and bool(final_output_path.name == "final_sadtalker_merged.mp4" or "portrait" not in final_output_path.name),
             "elapsed_seconds": round(total_time, 1),
             "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s",
-            "platform_hint": "Instagram Reels, TikTok, YouTube Shorts"
+            "platform_hint": "Instagram Reels, TikTok, YouTube Shorts – 9:16 portrait optimized",
+            "quality_used": quality,
         }
-
     except Exception as e:
         logger.error(f"Social Media Remotion pipeline failed: {e}", extra={"stage": "PIPELINE ERROR"})
         raise HTTPException(500, f"Social Media Remotion render failed: {e}")
@@ -1080,6 +1112,24 @@ def generate_user_id():
     return {
         "user_id": str(uuid.uuid4()),
         "message": "Pass this user_id to /create or /create-moa endpoints."
+    }
+
+@app.get("/supported-regions")
+def get_supported_regions():
+    """Get list of supported regions for demographic-based media fetching."""
+    from app.utils.region_mapper import get_supported_regions, REGION_DEMOGRAPHICS
+    
+    regions = get_supported_regions()
+    return {
+        "supported_regions": regions,
+        "region_details": {
+            region: {
+                "modifiers": REGION_DEMOGRAPHICS[region],
+                "description": f"Fetches media featuring people from {region.replace('_', ' ').title()}"
+            }
+            for region in regions
+        },
+        "usage": "Pass 'region' parameter to /create endpoint (e.g., region='india', region='africa')"
     }
 
 @app.get("/")
