@@ -5,58 +5,60 @@ Plan a sequence of visual scenes for a {video_type} video and generate **Pexels-
 
 VIDEO TYPES:
 
-- brand_ad: Company/brand story, trust, values
-- patient_awareness: Disease awareness, symptoms, daily life impact
-- product_ad: Product usage context, consumer experience, non-clinical depiction
+* brand_ad: Company/brand story, trust, values
+* patient_awareness: Disease awareness, symptoms, daily life impact
+* product_ad: Product usage context, consumer experience, non-clinical depiction
 
 CRITICAL RULES FOR PEXELS SEARCH TERMS:
 
-- Pexels favors **real people, real actions, lifestyle contexts**
-- Avoid abstract, clinical, or scientific terms that Pexels rarely contains
-- Do NOT use words like: "mechanism", "efficacy", "clinical trial", "pharmaceutical animation"
-- Prefer **person + action + body part + setting**
-- Prefer verbs: applying, holding, explaining, stretching, walking, sitting
-- Prefer visible scenarios over medical concepts
-- Each search term must be **4–7 words**, human-centric, and concrete
-- Search terms must describe **what a camera could realistically film**
+* Pexels favors **real people, real actions, lifestyle contexts**
+* Avoid abstract, clinical, or scientific terms that Pexels rarely contains
+* Do NOT use words like: "mechanism", "efficacy", "clinical trial", "pharmaceutical animation"
+* Prefer **person + action + body part + setting**
+* Prefer verbs: applying, holding, explaining, stretching, walking, sitting
+* Prefer visible scenarios over medical concepts
+* Each search term must be **4–7 words**, human-centric, and concrete
+* Search terms must describe **what a camera could realistically film**
 
 GOOD EXAMPLES:
 
-- "man holding lower back pain at home"
-- "person applying pain relief spray on back"
-- "doctor explaining spine model in clinic"
+* "man holding lower back pain at home"
+* "person applying pain relief spray on back"
+* "doctor explaining spine model in clinic"
 
 BAD EXAMPLES (do not use):
 
-- "back pain"
-- "medical animation"
-- "drug mechanism"
-- "medicine efficacy"
+* "back pain"
+* "medical animation"
+* "drug mechanism"
+* "medicine efficacy"
 
 GENERAL RULES:
 
-- Output ONLY valid JSON
-- No markdown, no explanations
-- Each scene = one clear visual idea
-- Scene duration: 5–12 seconds
-- Provide exactly 2–3 Pexels search terms per scene
-- If reference documents are provided, base claims strictly on them
-- Do NOT invent medical, clinical, or regulatory claims
+* Output ONLY valid JSON
+* No markdown, no explanations
+* Each scene = one clear visual idea
+* Scene duration: 5–12 seconds
+* Provide exactly 2–3 Pexels search terms per scene
+* If reference documents are provided, base claims strictly on them
+* Do NOT invent medical, clinical, or regulatory claims
+* Promotional content is allowed if relevant, but do NOT generate exaggerated or unverified claims about the company or product.
+* Do not include claims like "Cipla is the largest pharmaceutical company" unless this is explicitly mentioned in the provided reference documents or brief.
 
 JSON FORMAT:
-{{
-  "video_type": "{video_type}",
-  "brand_name": "{brand_name}",
-  "scenes": [
-    {{
-      "scene_id": 1,
-      "concept": "<one clear message>",
-      "visual_description": "<what is visibly happening on screen>",
-      "pexels_search_terms": ["term1", "term2", "term3"],
-      "duration_sec": 6
-    }}
-  ]
-}}
+{
+"video_type": "{video_type}",
+"brand_name": "{brand_name}",
+"scenes": [
+{
+"scene_id": 1,
+"concept": "<one clear message>",
+"visual_description": "<what is visibly happening on screen>",
+"pexels_search_terms": ["term1", "term2", "term3"],
+"duration_sec": 6
+}
+]
+}
 
 TOPIC / BRIEF:
 {topic}
