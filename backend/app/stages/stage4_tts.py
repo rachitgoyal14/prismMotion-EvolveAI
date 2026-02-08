@@ -15,6 +15,29 @@ load_dotenv()
 
 AUDIO_DIR = OUTPUTS_DIR / "audio"
 
+# Language-based voice mapping for Azure Neural TTS
+LANGUAGE_VOICE_MAP = {
+    "english": "en-US-JennyNeural",
+    "spanish": "es-ES-ElviraNeural",
+    "french": "fr-FR-DeniseNeural",
+    "german": "de-DE-KatjaNeural",
+    "italian": "it-IT-ElsaNeural",
+    "portuguese": "pt-BR-FranciscaNeural",
+    "chinese": "zh-CN-XiaoxiaoNeural",
+    "japanese": "ja-JP-NanamiNeural",
+    "korean": "ko-KR-SunHiNeural",
+    "hindi": "hi-IN-SwaraNeural",
+    "arabic": "ar-SA-ZariyahNeural",
+    "russian": "ru-RU-SvetlanaNeural",
+    "dutch": "nl-NL-ColetteNeural",
+    "polish": "pl-PL-ZofiaNeural",
+    "turkish": "tr-TR-EmelNeural",
+    "swedish": "sv-SE-SofieNeural",
+    "danish": "da-DK-ChristelNeural",
+    "norwegian": "nb-NO-PernilleNeural",
+    "finnish": "fi-FI-NooraNeural",
+}
+
 # Region-based voice mapping for Azure Neural TTS
 # All voices speak English, but with regionally appropriate accents
 REGION_VOICE_MAP = {
@@ -28,6 +51,39 @@ REGION_VOICE_MAP = {
     "southeast_asia": "en-PH-RosaNeural",    # Philippine English (Female)
     "global": "en-US-JennyNeural",           # US English (Female) - neutral/global
 }
+
+
+def get_voice_for_language_and_region(language: Optional[str] = None, region: Optional[str] = None) -> str:
+    """
+    Get the appropriate Azure Neural TTS voice based on language and region.
+    Language takes priority over region.
+    
+    Args:
+        language: Language code (e.g., "spanish", "french", "hindi")
+        region: Region code (e.g., "india", "africa", "europe") - only used if language is English or not specified
+    
+    Returns:
+        Azure Neural TTS voice name
+    """
+    # If language is specified and not English, use language-based voice
+    if language and language.lower() != "english":
+        language_key = language.lower().strip()
+        voice = LANGUAGE_VOICE_MAP.get(language_key)
+        if voice:
+            logger.info(f"Selected voice '{voice}' for language '{language}'")
+            return voice
+        else:
+            logger.warning(f"Language '{language}' not supported, falling back to English")
+    
+    # If no language specified or English, use region-based voice
+    if region:
+        region_key = region.lower().strip()
+        voice = REGION_VOICE_MAP.get(region_key, "en-US-JennyNeural")
+        logger.info(f"Selected voice '{voice}' for region '{region}'")
+        return voice
+    
+    # Default to US English
+    return "en-US-JennyNeural"
 
 
 def get_voice_for_region(region: Optional[str]) -> str:
@@ -55,7 +111,8 @@ def generate_tts_for_scene(
     scene_id: int, 
     text: str, 
     output_dir: Path,
-    region: Optional[str] = None
+    region: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> tuple[int, Path]:
     """
     Generate TTS audio for a single scene using Azure Speech.
@@ -66,6 +123,7 @@ def generate_tts_for_scene(
         text: Script text to synthesize
         output_dir: Directory to save audio file
         region: Optional region code for voice selection
+        language: Optional language code for voice selection (takes priority over region)
     """
 
     if not text.strip():
@@ -88,8 +146,8 @@ def generate_tts_for_scene(
             region=azure_region
         )
 
-        # Select voice based on region (English with appropriate accent)
-        voice_name = get_voice_for_region(region)
+        # Select voice based on language and region
+        voice_name = get_voice_for_language_and_region(language, region)
         speech_config.speech_synthesis_voice_name = voice_name
         
         logger.info(f"Scene {scene_id}: Using voice '{voice_name}'")
@@ -135,9 +193,10 @@ def tts_generate(
     scene_ids: list[int],
     max_workers: int = 4,
     region: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> Path:
     """
-    Parallel Azure Speech TTS generation with region-based voice selection.
+    Parallel Azure Speech TTS generation with language and region-based voice selection.
 
     Args:
         script: List of scene scripts
@@ -145,6 +204,7 @@ def tts_generate(
         scene_ids: List of scene IDs to generate audio for
         max_workers: Number of parallel workers (default: 4)
         region: Optional region code for voice selection (e.g., "india", "africa")
+        language: Optional language code for voice selection (e.g., "spanish", "hindi")
 
     Why max_workers=4?
     Azure Speech scales well, but beyond 4 you hit diminishing returns.
@@ -159,9 +219,9 @@ def tts_generate(
     script_map = {s["scene_id"]: s["script"] for s in script}
     
     # Log voice selection
-    voice_name = get_voice_for_region(region)
+    voice_name = get_voice_for_language_and_region(language, region)
     stage_logger.progress(
-        f"Using voice '{voice_name}' for region '{region or 'default'}'"
+        f"Using voice '{voice_name}' for language '{language or 'english'}' and region '{region or 'default'}'"
     )
 
     stage_logger.progress(
@@ -180,7 +240,8 @@ def tts_generate(
                 sid,
                 script_map.get(sid, ""),
                 output_dir,
-                region  # Pass region to each scene
+                region,  # Pass region to each scene
+                language  # Pass language to each scene
             ): sid
             for sid in scene_ids
         }

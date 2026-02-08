@@ -7,6 +7,9 @@ import shutil
 import subprocess
 from pathlib import Path
 import logging
+import wave
+import contextlib
+
 logger = logging.getLogger(__name__)
 
 from app.paths import OUTPUTS_DIR, REMOTION_DIR
@@ -14,6 +17,22 @@ from app.paths import OUTPUTS_DIR, REMOTION_DIR
 VIDEOS_DIR = OUTPUTS_DIR / "videos"
 AUDIO_DIR = OUTPUTS_DIR / "audio"
 MEDIA_PUBLIC_ROOT = REMOTION_DIR / "public" / "media"
+
+
+def get_audio_duration(audio_path: Path) -> float:
+    """
+    Get the duration of a WAV audio file in seconds.
+    Returns 0 if file doesn't exist or can't be read.
+    """
+    try:
+        with contextlib.closing(wave.open(str(audio_path), 'r')) as f:
+            frames = f.getnframes()
+            rate = f.getframerate()
+            duration = frames / float(rate)
+            return duration
+    except Exception as e:
+        logger.warning(f"Could not read audio duration from {audio_path}: {e}")
+        return 0.0
 
 
 def render_remotion(video_id: str) -> Path:
@@ -107,12 +126,16 @@ def render_remotion(video_id: str) -> Path:
 
         # Destination inside Remotion public dir (if source exists)
         audio_rel_path = None
+        audio_duration = 0.0
         if source_audio.exists():
             dest_audio = public_audio_root / f"scene_{sid}.wav"
             # Copy or overwrite to ensure latest audio is available
             shutil.copy2(source_audio, dest_audio)
             # This relative path is what <Audio src={staticFile(...)} /> will receive.
             audio_rel_path = f"audio/{video_id}/scene_{sid}.wav"
+            # Get the actual audio duration
+            audio_duration = get_audio_duration(source_audio)
+            logger.info(f"Scene {sid}: Audio duration = {audio_duration:.2f}s")
 
                     # Copy image if local exists, else fallback to remote
             image = s.get("pexels_image") or {}
@@ -166,6 +189,7 @@ def render_remotion(video_id: str) -> Path:
             "video": {"src": video_rel_path} if video_rel_path else None,
             # Relative path under remotion/public; consumed via staticFile() in PharmaVideo.tsx
             "audio_src": audio_rel_path,
+            "audio_duration": audio_duration,  # Pass actual audio duration for sync
         }
         
         # Add animation metadata if available
