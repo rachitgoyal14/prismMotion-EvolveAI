@@ -195,12 +195,13 @@ def render_remotion(video_id: str) -> Path:
         "--enable-remote-media",  # Keep for remote fallbacks; remove if no remotes expected
         "--codec=h264",
         "--audio-codec=aac",
-        "--port=3000",
+        "--port=3001",
     ]
 
     subprocess.run(
         cmd,
         cwd=REMOTION_DIR,
         check=True,
+        shell=True,
     )
     return final_path

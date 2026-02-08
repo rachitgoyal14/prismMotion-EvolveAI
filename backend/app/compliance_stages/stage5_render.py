@@ -54,6 +54,7 @@ def render_compliance_video(video_id: str) -> Path:
         ],
         cwd=REMOTION_DIR,
         check=True,
+        shell=True,
     )
 
     return final_path
