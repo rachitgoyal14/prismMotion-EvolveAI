@@ -104,6 +104,7 @@ class CreateRequest(BaseModel):
     brand_name: str = ""
     persona: str = "professional narrator"
     tone: str = "clear and reassuring"
+    region: Optional[str] = None  # e.g., "india", "africa", "europe", "global"
 
 class CreateMoARequest(BaseModel):
     """Mechanism of Action video using Manim."""
@@ -123,12 +124,11 @@ class CreateComplianceRequest(BaseModel):
     tone: str = "formal and precise"
 
 class CreateDoctorRequest(BaseModel):
-    """Doctor-facing HCP promotional video using Manim + Pexels."""
+    """Doctor-facing HCP promotional video using Manim + Logo."""
     drug_name: str
     indication: str
     moa_summary: str = ""
     clinical_data: str = ""
-    pexels_query: str = "doctor consultation"
     persona: str = "professional medical narrator"
     tone: str = "scientific and professional"
     quality: str = "low"
@@ -398,6 +398,7 @@ async def create_video(
     brand_name: str = Form(""),
     persona: str = Form("professional narrator"),
     tone: str = Form("clear and reassuring"),
+    region: Optional[str] = Form(None),
     logo: Optional[UploadFile] = File(None),
     image: Optional[UploadFile] = File(None),
     documents: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings too
@@ -473,6 +474,7 @@ async def create_video(
             video_type=video_type,
             brand_name=brand_name or "Our Brand",
             reference_docs=reference_text,
+            region=region,
         )
 
         scenes = scenes_data.get("scenes", [])
@@ -493,6 +495,7 @@ async def create_video(
             script,
             video_id,
             assets={"logos": logo_paths, "images": image_paths},
+            region=region,
         )
 
         try:
@@ -501,7 +504,7 @@ async def create_video(
             logger.warning(f"Animation skipped: {e}")
 
         scene_ids = [s["scene_id"] for s in scenes]
-        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids)
+        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids, region=region)
         final_path = render_remotion(video_id)
 
         # Update DB
@@ -629,8 +632,8 @@ async def create_moa_video(
         tone=tone,
         quality=quality,
         user_id=user_id,
-        video_id=None,
-        documents=docs,  # Pass the converted list
+        # video_id=None,
+        documents=documents,
         logo=logo,
         images=imgs,  # Pass the converted list
     )
@@ -641,12 +644,11 @@ async def create_doctor_video(
     indication: str = Form(...),
     moa_summary: str = Form(""),
     clinical_data: str = Form(""),
-    pexels_query: str = Form("doctor consultation"),
+    pexels_query: str = Form("doctor consultation"),  # Deprecated but kept for backward compatibility
     persona: str = Form("professional medical narrator"),
     tone: str = Form("scientific and professional"),
     quality: str = Form("low"),
     user_id: Optional[str] = Form(None),
-    video_id: Optional[str] = Form(None),
     documents: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings
     logo: Optional[UploadFile] = File(None),
     images: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings
@@ -657,8 +659,7 @@ async def create_doctor_video(
     from app.doctor_ad_stages.stage5_doctor_render import render_doctor_video
 
     pipeline_start = time.time()
-    if not video_id:
-        video_id = generate_video_id()
+    video_id = generate_video_id()
     
     # ✅ Filter out strings using duck typing
     docs = []
@@ -702,14 +703,34 @@ async def create_doctor_video(
     stage_logger = StageLogger("Doctor Scene Planning")
     stage_logger.start()
 
+    # Save logo file if provided
+    logo_path = None
+    if valid_logo:
+        logo_dir = VIDEOS_DIR / video_id / "logo"
+        logo_dir.mkdir(parents=True, exist_ok=True)
+        logo_path = logo_dir / valid_logo.filename
+        with open(logo_path, "wb") as f:
+            f.write(await valid_logo.read())
+        logger.info(f"Saved logo: {logo_path}")
+
+    # Save product image if provided (first image is used as product image)
+    product_image_path = None
+    if valid_images:
+        product_dir = VIDEOS_DIR / video_id / "product"
+        product_dir.mkdir(parents=True, exist_ok=True)
+        product_image_path = product_dir / valid_images[0].filename
+        with open(product_image_path, "wb") as f:
+            f.write(await valid_images[0].read())
+        logger.info(f"Saved product image: {product_image_path}")
+
     scenes_data = generate_doctor_scenes(
         drug_name=drug_name,
         indication=indication,
         moa_summary=moa_summary,
         clinical_data=clinical_data,
-        pexels_query=pexels_query,
-        logo_path=valid_logo.filename if valid_logo else None,
-        image_paths=[img.filename for img in valid_images],
+        logo_path=str(logo_path) if logo_path else None,
+        product_image_path=str(product_image_path) if product_image_path else None,
+        image_paths=[img.filename for img in valid_images[1:]] if len(valid_images) > 1 else [],
         reference_docs=extract_documents_text(valid_docs) if valid_docs else None
     )
 
@@ -719,18 +740,28 @@ async def create_doctor_video(
     if not scenes:
         raise HTTPException(500, "No scenes generated")
 
-    pexels_media = run_stage3_pexels(scenes_data, video_id)
+    # Handle product and logo scene info
+    scene_info = run_stage3_pexels(
+        scenes_data, 
+        video_id, 
+        str(logo_path) if logo_path else None,
+        str(product_image_path) if product_image_path else None
+    )
 
+    # Inject paths into product and logo scenes
     for scene in scenes:
-        if scene.get("type") == "pexels":
-            scene_id = scene["scene_id"]
-            media = pexels_media.get(scene_id, {})
-            image_path = media.get("image", {}).get("local_path")
-            if image_path:
-                scene["pexels_image_path"] = image_path
-                scene["type"] = "manim"
-            else:
-                logger.warning(f"Scene {scene_id}: No Pexels image")
+        scene_id = scene["scene_id"]
+        info = scene_info.get(scene_id, {})
+        
+        if scene.get("type") == "product":
+            if info.get("product_image_path"):
+                scene["product_image_path"] = info["product_image_path"]
+            scene["product_name"] = info.get("product_name", drug_name)
+        
+        elif scene.get("type") == "logo":
+            if info.get("logo_path"):
+                scene["logo_path"] = info["logo_path"]
+            scene["tagline"] = info.get("tagline", "")
 
     stage_logger = StageLogger("Script Writing")
     stage_logger.start()
@@ -1072,6 +1103,24 @@ def generate_user_id():
     return {
         "user_id": str(uuid.uuid4()),
         "message": "Pass this user_id to /create or /create-moa endpoints."
+    }
+
+@app.get("/supported-regions")
+def get_supported_regions():
+    """Get list of supported regions for demographic-based media fetching."""
+    from app.utils.region_mapper import get_supported_regions, REGION_DEMOGRAPHICS
+    
+    regions = get_supported_regions()
+    return {
+        "supported_regions": regions,
+        "region_details": {
+            region: {
+                "modifiers": REGION_DEMOGRAPHICS[region],
+                "description": f"Fetches media featuring people from {region.replace('_', ' ').title()}"
+            }
+            for region in regions
+        },
+        "usage": "Pass 'region' parameter to /create endpoint (e.g., region='india', region='africa')"
     }
 
 @app.get("/")

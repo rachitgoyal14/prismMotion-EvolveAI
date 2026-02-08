@@ -3,6 +3,7 @@ Stage 2: Fetch Pexels media per scene, then have LLM generate Remotion TSX compo
 """
 import json
 from pathlib import Path
+from typing import Optional
 
 from app.paths import PROMPTS_DIR, OUTPUTS_DIR, REMOTION_DIR
 from app.utils.json_safe import extract_json
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 VIDEOS_DIR = OUTPUTS_DIR / "videos"
 
-def copy_uploaded_assets_to_remotion(video_id: str, assets: dict | None):
+def copy_uploaded_assets_to_remotion(video_id: str, assets: Optional[dict]):
     """
     Copy uploaded assets into Remotion public folder
     so staticFile() can access them.
@@ -54,12 +55,14 @@ def copy_uploaded_assets_to_remotion(video_id: str, assets: dict | None):
     return result
 
 
-def enrich_scenes_with_media(scenes_data: dict, video_id: str) -> dict:
+def enrich_scenes_with_media(scenes_data: dict, video_id: str, region: Optional[str] = None) -> dict:
     """
     For each scene, fetch and DOWNLOAD one landscape-aspect-ratio image (and optionally video) from Pexels.
     Strictly rejects portrait/vertical media and uses landscape fallback searches.
+    If region is provided, applies regional demographic context to search terms.
     """
     from app.utils.pexels_client import search_photos, search_videos
+    from app.utils.region_mapper import apply_region_to_search_terms
     
     scenes = scenes_data.get("scenes", [])
     
@@ -76,6 +79,11 @@ def enrich_scenes_with_media(scenes_data: dict, video_id: str) -> dict:
         terms = s.get("pexels_search_terms", [s.get("concept", "pharmaceutical")])
         if isinstance(terms, str):
             terms = [terms]
+        
+        # Apply regional demographic context to search terms
+        if region:
+            terms = apply_region_to_search_terms(terms, region)
+            logger.info(f"Scene {scene_id}: Applied region '{region}' to search terms: {terms}")
         
         logger.info(f"Scene {scene_id}: Fetching landscape media for {terms}")
         
@@ -252,17 +260,19 @@ def run_stage2(
     scenes_data: dict,
     script: list[dict],
     video_id: str,
-    assets: dict | None = None
+    assets: Optional[dict] = None,
+    region: Optional[str] = None,
 ) -> str:
     """
     Enrich scenes with Pexels media + uploaded assets.
+    If region is provided, applies regional demographic context to media search.
     """
 
     # 1. Copy uploaded assets into Remotion
     remotion_assets = copy_uploaded_assets_to_remotion(video_id, assets)
 
-    # 2. Enrich scenes with Pexels media
-    enriched = enrich_scenes_with_media(scenes_data, video_id)
+    # 2. Enrich scenes with Pexels media (with optional region filtering)
+    enriched = enrich_scenes_with_media(scenes_data, video_id, region=region)
 
     # 3. Attach branding assets globally
     enriched["branding"] = {
