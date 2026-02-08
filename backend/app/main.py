@@ -104,6 +104,7 @@ class CreateRequest(BaseModel):
     brand_name: str = ""
     persona: str = "professional narrator"
     tone: str = "clear and reassuring"
+    region: Optional[str] = None  # e.g., "india", "africa", "europe", "global"
 
 class CreateMoARequest(BaseModel):
     """Mechanism of Action video using Manim."""
@@ -397,6 +398,7 @@ async def create_video(
     brand_name: str = Form(""),
     persona: str = Form("professional narrator"),
     tone: str = Form("clear and reassuring"),
+    region: Optional[str] = Form(None),
     logo: Optional[UploadFile] = File(None),
     image: Optional[UploadFile] = File(None),
     documents: Union[List[UploadFile], List[str], None] = File(None),  # ✅ Accept strings too
@@ -472,6 +474,7 @@ async def create_video(
             video_type=video_type,
             brand_name=brand_name or "Our Brand",
             reference_docs=reference_text,
+            region=region,
         )
 
         scenes = scenes_data.get("scenes", [])
@@ -492,6 +495,7 @@ async def create_video(
             script,
             video_id,
             assets={"logos": logo_paths, "images": image_paths},
+            region=region,
         )
 
         try:
@@ -500,7 +504,7 @@ async def create_video(
             logger.warning(f"Animation skipped: {e}")
 
         scene_ids = [s["scene_id"] for s in scenes]
-        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids)
+        tts_generate(script=script, video_id=video_id, scene_ids=scene_ids, region=region)
         final_path = render_remotion(video_id)
 
         # Update DB
@@ -1099,6 +1103,24 @@ def generate_user_id():
     return {
         "user_id": str(uuid.uuid4()),
         "message": "Pass this user_id to /create or /create-moa endpoints."
+    }
+
+@app.get("/supported-regions")
+def get_supported_regions():
+    """Get list of supported regions for demographic-based media fetching."""
+    from app.utils.region_mapper import get_supported_regions, REGION_DEMOGRAPHICS
+    
+    regions = get_supported_regions()
+    return {
+        "supported_regions": regions,
+        "region_details": {
+            region: {
+                "modifiers": REGION_DEMOGRAPHICS[region],
+                "description": f"Fetches media featuring people from {region.replace('_', ' ').title()}"
+            }
+            for region in regions
+        },
+        "usage": "Pass 'region' parameter to /create endpoint (e.g., region='india', region='africa')"
     }
 
 @app.get("/")
