@@ -266,7 +266,7 @@ def render_sm_video(
     manim_code_dir = VIDEOS_DIR / video_id / "manim"
     audio_dir = AUDIO_DIR / video_id
     output_dir = VIDEOS_DIR / video_id
-    final_output = output_dir / "final_sm_portrait.mp4"
+    final_output = output_dir / "final.mp4"
     
     logger.info(f"Starting SM portrait render pipeline (quality={quality}, aspect_ratio=9:16)")
     

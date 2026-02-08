@@ -51,6 +51,7 @@ def render_compliance_video(video_id: str) -> Path:
             f"--props={props_path}",
             "--codec=h264",
             "--audio-codec=aac",
+            "--port=3001",
         ],
         cwd=REMOTION_DIR,
         check=True,

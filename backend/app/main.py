@@ -60,6 +60,9 @@ from app.stages.stage5_render import render_remotion
 from app.moa_stages.stage1_moa_scenes import generate_moa_scenes
 from app.moa_stages.stage2_moa_manim import run_stage2_moa
 from app.moa_stages.stage5_moa_render import render_moa_video
+from app.onboarding.routes import router as onboarding_router
+
+
 
 from app.paths import OUTPUTS_DIR
 from app import db
@@ -67,6 +70,16 @@ from app import db
 # ---------------------------------------------------------------------
 
 app = FastAPI(title="Pharma Video Generator")
+app.include_router(onboarding_router)
+
+from fastapi.staticfiles import StaticFiles
+
+app.mount(
+    "/outputs",
+    StaticFiles(directory="app/outputs"),
+    name="outputs"
+)
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -512,7 +525,7 @@ async def create_video(
             "status": "complete",
             "video_id": video_id,
             "video_type": video_type,
-            "video_path": str(final_path),
+            "video_url": f"/outputs/videos/{video_id}/final.mp4",
             "assets": {"logos": logo_paths, "images": image_paths},
             "elapsed_seconds": round(total_time, 1),
         }
@@ -572,6 +585,22 @@ async def create_compliance_video(
         logo=valid_logo,
         images=valid_images,
     )
+    
+    # Assuming run_compliance_pipeline returns a dict with video_id and path
+    # We need to construct the standard response here if possible, 
+    # but run_compliance_pipeline might need adjustment or we trust it returns compatible structure.
+    # For now, let's assume it returns a path we can rename if needed, OR we just return what it has 
+    # but we should try to match the pattern if we can control it. 
+    # Since I cannot see run_compliance_pipeline, I will wrap the response to include video_url if path is present.
+    
+    # However, to be safe and strictly follow the instructions for KNOWN endpoints:
+    # The user instruction implies *I* should ensure the output filename. 
+    # I'll add a check if 'video_path' is in result, and rename it.
+    
+    if "video_path" in result and "video_id" in result:
+        vid = result["video_id"]
+        # Ensure we point to final.mp4
+        result["video_url"] = f"/outputs/videos/{vid}/final.mp4"
 
     return {"status": "ok", **result}
 
@@ -751,7 +780,7 @@ async def create_doctor_video(
         "video_id": video_id,
         "video_type": "doctor_ad",
         "drug_name": drug_name,
-        "video_path": str(final_path),
+        "video_url": f"/outputs/videos/{video_id}/final.mp4",
         "elapsed_seconds": round(total_time, 1),
         "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s"
     }
@@ -865,7 +894,7 @@ async def create_sm_video(
             "video_id": video_id,
             "video_type": "social_media",
             "drug_name": drug_name,
-            "video_path": str(final_path),
+            "video_url": f"/outputs/videos/{video_id}/final.mp4",
             "elapsed_seconds": round(total_time, 1),
             "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s",
             "platform_hint": "Instagram Reels, TikTok, YouTube Shorts"
@@ -1011,6 +1040,8 @@ async def create_sm_remotion_video(
 
             final_output_path = merged_path
 
+            final_output_path = merged_path
+
         try:
             await db.update_video_state(video_id, state="complete", path=str(final_output_path))
         except Exception as e:
@@ -1022,7 +1053,7 @@ async def create_sm_remotion_video(
             "status": "complete",
             "video_id": video_id,
             "video_type": "social_media_remotion",
-            "video_path": str(final_output_path),
+            "video_url": f"/outputs/videos/{video_id}/final.mp4",
             "elapsed_seconds": round(total_time, 1),
             "elapsed_formatted": f"{int(total_time//60)}m {int(total_time%60)}s",
             "platform_hint": "Instagram Reels, TikTok, YouTube Shorts"

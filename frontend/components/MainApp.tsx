@@ -48,6 +48,15 @@ const QUICK_ACTIONS = [
   'Social media'
 ];
 
+const CREATE_ENDPOINTS: Record<string, string> = {
+  'Clinical Ads': "/create-doctor",
+  'Consumer Ads': "/create-sm-rm",
+  'Disease awareness': "/create",
+  'Mechanism of action': "/create-moa",
+  'Compliance': "/create-compliance",
+  'Social media': "/create-sm"
+};
+
 // Animation Constants
 const ANIM_DURATION = 220;
 const ANIM_STAGGER = 70;
@@ -284,64 +293,284 @@ const MainApp: React.FC<MainAppProps> = ({ userData, initialMode }) => {
     setNodes(newNodes);
   };
 
-  const handleQuickAction = (text: string) => {
+  const handleQuickAction = async (text: string) => {
     if (selectedMode === 'agent') {
-      if (activeChip === text) {
-        setActiveChip(null);
-      } else {
-        setActiveChip(text);
+      const endpoint = CREATE_ENDPOINTS[text];
+      if (!endpoint) return;
+
+      // 1. Generate Input Data
+      const currentInput = inputValue.trim() || `Create a ${text} video`;
+      const userId = localStorage.getItem("user_id");
+
+      // 2. Add User Message to Chat
+      const userMsgId = Date.now().toString();
+      const userMsg: Message = {
+        id: userMsgId,
+        role: 'user',
+        text: `[Action: ${text}] ${currentInput}`
+      };
+
+      // 3. Add "Creating..." Message
+      const loadingMsgId = (Date.now() + 1).toString();
+      const loadingMsg: Message = {
+        id: loadingMsgId,
+        role: 'ai',
+        isLoading: true,
+        text: `Creating ${text} video...`
+      };
+
+      setMessages(prev => [...prev, userMsg, loadingMsg]);
+      setInputValue('');
+
+      // 4. Construct Payload based on Endpoint Requirements
+      let payload: any = { user_id: userId };
+
+      // Field Mapping Logic (Single Input -> Required Fields)
+      if (text === 'Clinical Ads') { // /create-doctor
+        payload.drug_name = currentInput;
+        payload.indication = "General Indication";
+      } else if (text === 'Consumer Ads') { // /create-sm-rm
+        payload.topic = currentInput;
+      } else if (text === 'Disease awareness') { // /create
+        payload.topic = currentInput;
+      } else if (text === 'Mechanism of action') { // /create-moa
+        payload.drug_name = currentInput;
+        payload.condition = "General Condition";
+      } else if (text === 'Compliance') { // /create-compliance
+        payload.prompt = currentInput;
+      } else if (text === 'Social media') { // /create-sm
+        payload.drug_name = currentInput;
+        payload.indication = "General Indication";
       }
+
+      // 5. Call Backend
+      const response = await createVideo(endpoint, payload);
+
+      // 6. Update Chat with Result & Start Polling
+      setMessages(prev => prev.map(msg => {
+        if (msg.id === loadingMsgId) {
+          if (response && response.video_id) {
+            const videoUrl = response.video_url || `http://localhost:8000/outputs/videos/${response.video_id}/final.mp4`;
+            startPolling(response.video_id, loadingMsgId, videoUrl); // Start polling with URL
+            return {
+              ...msg,
+              isLoading: true, // Keep loading while polling/rendering
+              text: `Video generation started! Video ID: ${response.video_id}. Rendering...`,
+              role: 'ai'
+            };
+          } else {
+            return {
+              ...msg,
+              isLoading: false,
+              text: `Sorry, I couldn't start the video generation for ${text}.`,
+              role: 'ai'
+            };
+          }
+        }
+        return msg;
+      }));
+
     } else {
       initializeWorkflow(text);
     }
   };
 
-  const handleGenerate = () => {
+  const startPolling = (videoId: string, messageId: string, videoUrl: string) => {
+    const pollInterval = 5000; // 5 seconds
+    const maxAttempts = 120; // 10 minutes timeout
+    let attempts = 0;
+
+    const intervalId = setInterval(async () => {
+      attempts++;
+      try {
+        // Poll the static file directly using HEAD request
+        const res = await fetch(videoUrl, { method: 'HEAD' });
+
+        if (res.ok) {
+          clearInterval(intervalId);
+          console.log(`Video ${videoId} is ready!`);
+
+          setMessages(prev => prev.map(msg => {
+            if (msg.id === messageId) {
+              return {
+                ...msg,
+                isLoading: false,
+                text: "Your video is ready!",
+                videoUrl: videoUrl
+              };
+            }
+            return msg;
+          }));
+        } else {
+          console.log(`Polling video ${videoId}... Attempt ${attempts}`);
+        }
+      } catch (error) {
+        console.error("Polling error:", error);
+      }
+
+      if (attempts >= maxAttempts) {
+        clearInterval(intervalId);
+        setMessages(prev => prev.map(msg => {
+          if (msg.id === messageId) {
+            return {
+              ...msg,
+              isLoading: false,
+              text: "Video generation timed out. Please try again later.",
+            };
+          }
+          return msg;
+        }));
+      }
+    }, pollInterval);
+  };
+
+  // --- BACKEND INTEGRATION ---
+
+  const createVideo = async (endpoint: string, data: any) => {
+    try {
+      const formData = new FormData();
+
+      // Append all data fields to FormData
+      Object.keys(data).forEach(key => {
+        if (data[key] !== undefined && data[key] !== null) {
+          formData.append(key, data[key]);
+        }
+      });
+
+      const res = await fetch(`http://localhost:8000${endpoint}`, {
+        method: "POST",
+        body: formData
+      });
+
+      if (!res.ok) throw new Error(`Video creation failed for ${endpoint}`);
+      return await res.json();
+    } catch (error) {
+      console.error(`Error creating video (${endpoint}):`, error);
+      return null;
+    }
+  };
+
+  const uploadDocument = async (file: File) => {
+    try {
+      const formData = new FormData();
+      const userId = localStorage.getItem("user_id");
+      if (!userId) throw new Error("No user_id found");
+
+      formData.append("user_id", userId);
+      formData.append("file", file);
+
+      const res = await fetch("http://localhost:8000/chat/upload-document", {
+        method: "POST",
+        body: formData
+      });
+
+      if (!res.ok) throw new Error("Upload failed");
+      return await res.json();
+    } catch (error) {
+      console.error("Document upload error:", error);
+      return null;
+    }
+  };
+
+  const sendMessage = async (message: string) => {
+    try {
+      const userId = localStorage.getItem("user_id");
+      if (!userId) throw new Error("No user_id found");
+
+      const res = await fetch("http://localhost:8000/chat/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          message: message,
+          use_rag: true
+        })
+      });
+
+      if (!res.ok) throw new Error("Message send failed");
+      return await res.json();
+    } catch (error) {
+      console.error("Message send error:", error);
+      return { reply: "Sorry, I encountered an error connecting to the server.", role: "assistant" };
+    }
+  };
+
+  const handleGenerate = async () => {
     if (!inputValue.trim() && !activeChip && !attachedFile) return;
-    const chipText = activeChip ? `[Selected Mode: ${activeChip}] ` : '';
-    const fileText = attachedFile ? `[Attached: ${attachedFile.name}] ` : '';
-    const userText = chipText + fileText + inputValue;
-    const rawInput = inputValue;
+
+    const currentInput = inputValue;
+    const currentFile = attachedFile;
+    const currentChip = activeChip;
+
+    // Reset Input State immediately
     setInputValue('');
     setActiveChip(null);
     setAttachedFile(null);
 
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', text: userText };
+    // Construct Display Text
+    const chipText = currentChip ? `[Selected Mode: ${currentChip}] ` : '';
+    const fileText = currentFile ? `[Attached: ${currentFile.name}] ` : '';
+    const userText = chipText + fileText + currentInput;
+
+    // Add User Message
+    const userMsgId = Date.now().toString();
+    const userMsg: Message = { id: userMsgId, role: 'user', text: userText };
+
+    // Add Loading Message
     const loadingMsgId = (Date.now() + 1).toString();
     const loadingMsg: Message = { id: loadingMsgId, role: 'ai', isLoading: true };
 
     setMessages(prev => [...prev, userMsg, loadingMsg]);
 
+    // Handle Session Creation if needed
     if (!currentSessionId) {
       const newId = Date.now().toString();
-      let titleWords = rawInput.trim().split(/\s+/);
-      let title = "";
-      if (titleWords.length > 0 && titleWords[0] !== "") {
-        title = titleWords.slice(0, 4).join(' ');
-        if (titleWords.length > 4) title += "...";
-      } else if (activeChip) {
-        title = activeChip;
-      } else {
-        title = "New Conversation";
+      let title = "New Conversation";
+      if (currentInput) {
+        title = currentInput.slice(0, 30) + (currentInput.length > 30 ? "..." : "");
+      } else if (currentChip) {
+        title = currentChip;
       }
-      title = title.charAt(0).toUpperCase() + title.slice(1);
-
       setChatSessions(prev => [{ id: newId, title, date: new Date() }, ...prev]);
       setCurrentSessionId(newId);
     }
 
-    setTimeout(() => {
+    try {
+      // 1. Upload Document if exists
+      if (currentFile) {
+        await uploadDocument(currentFile);
+      }
+
+      // 2. Send Message
+      const response = await sendMessage(userText);
+
+      // 3. Update UI with Response
       setMessages(prev => prev.map(msg => {
         if (msg.id === loadingMsgId) {
           return {
             ...msg,
             isLoading: false,
-            videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+            text: response.answer || response.reply, // Handle potentially different response keys
+            role: 'ai'
           };
         }
         return msg;
       }));
-    }, 4000);
+
+    } catch (error) {
+      console.error("Chat interaction failed:", error);
+      setMessages(prev => prev.map(msg => {
+        if (msg.id === loadingMsgId) {
+          return {
+            ...msg,
+            isLoading: false,
+            text: "Sorry, something went wrong.",
+            role: 'ai'
+          };
+        }
+        return msg;
+      }));
+    }
   };
 
   const handleNewChat = () => {
