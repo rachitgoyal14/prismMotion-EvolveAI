@@ -38,7 +38,9 @@ import io
 from app.utils.logging_config import setup_logging, StageLogger
 from app.utils.video_utils import convert_to_portrait_9_16
 
-from app.utils.video_utils import convert_to_portrait_9_16
+# from app.utils.video_utils import convert_to_portrait_9_16
+# from app.utils.video_utils import convert_to_portrait_9_16
+
 from app.chat.routes import router as chat_router
 setup_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)

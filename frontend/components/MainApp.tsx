@@ -170,6 +170,7 @@ const MainApp: React.FC<MainAppProps> = ({ userData, initialMode }) => {
   // Input & Chips State
   const [inputValue, setInputValue] = useState('');
   const [activeChip, setActiveChip] = useState<string | null>(null);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
 
   // Chat History State
   const [messages, setMessages] = useState<Message[]>([]);
@@ -296,12 +297,14 @@ const MainApp: React.FC<MainAppProps> = ({ userData, initialMode }) => {
   };
 
   const handleGenerate = () => {
-    if (!inputValue.trim() && !activeChip) return;
+    if (!inputValue.trim() && !activeChip && !attachedFile) return;
     const chipText = activeChip ? `[Selected Mode: ${activeChip}] ` : '';
-    const userText = chipText + inputValue;
+    const fileText = attachedFile ? `[Attached: ${attachedFile.name}] ` : '';
+    const userText = chipText + fileText + inputValue;
     const rawInput = inputValue;
     setInputValue('');
     setActiveChip(null);
+    setAttachedFile(null);
 
     const userMsg: Message = { id: Date.now().toString(), role: 'user', text: userText };
     const loadingMsgId = (Date.now() + 1).toString();
@@ -345,6 +348,7 @@ const MainApp: React.FC<MainAppProps> = ({ userData, initialMode }) => {
     setMessages([]);
     setInputValue('');
     setActiveChip(null);
+    setAttachedFile(null);
     setCurrentSessionId(null);
   };
 
@@ -665,12 +669,32 @@ const MainApp: React.FC<MainAppProps> = ({ userData, initialMode }) => {
   const renderInputBox = () => (
     <div className="w-full relative bg-white rounded-full shadow-lg border border-gray-200 focus-within:border-emerald-500 focus-within:shadow-xl transition-all duration-300 px-1 py-1 flex items-center">
       <div className="flex items-center h-full pl-1">
-        <button className="p-2.5 text-gray-400 hover:text-emerald-600 transition-colors rounded-full hover:bg-gray-50 flex-shrink-0">
+        <label className="p-2.5 text-gray-400 hover:text-emerald-600 transition-colors rounded-full hover:bg-gray-50 flex-shrink-0 cursor-pointer">
+          <input
+            type="file"
+            className="hidden"
+            accept=".doc,.docx,.pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf"
+            onChange={(e) => {
+              if (e.target.files?.[0]) setAttachedFile(e.target.files[0]);
+            }}
+          />
           <Paperclip size={20} />
-        </button>
+        </label>
       </div>
 
       <div className="flex-1 flex items-center min-h-[44px] px-2 gap-2 overflow-hidden">
+        {attachedFile && (
+          <div className="flex-shrink-0 bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm whitespace-nowrap">
+            <Paperclip size={12} />
+            <span className="max-w-[100px] truncate">{attachedFile.name}</span>
+            <button
+              onClick={() => setAttachedFile(null)}
+              className="hover:text-blue-950 p-0.5 rounded-full hover:bg-blue-200/50 transition-colors"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
         {activeChip && (
           <div className="flex-shrink-0 bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm whitespace-nowrap">
             {activeChip}
@@ -734,26 +758,33 @@ const MainApp: React.FC<MainAppProps> = ({ userData, initialMode }) => {
     <div className="h-screen w-screen bg-[#f8fcf9] text-gray-900 font-sans overflow-hidden flex">
 
       {/* Sidebar */}
+      {/* Sidebar - Dark Green Theme */}
       <aside
-        className={`bg-gray-50/80 backdrop-blur-sm flex flex-col transition-all duration-300 border-r border-gray-200 flex-shrink-0 relative z-30 overflow-x-hidden ${sidebarOpen ? 'w-72' : 'w-0 opacity-0'
+        className={`bg-gradient-to-b from-[#0E3B2E] via-[#0B3327] to-[#08281F] flex flex-col transition-all duration-300 border-r border-white/5 flex-shrink-0 relative z-30 overflow-x-hidden shadow-2xl ${sidebarOpen ? 'w-72' : 'w-0 opacity-0'
           }`}
       >
-        <div className="p-4 flex items-center justify-between flex-shrink-0">
+        <div className="p-5 flex items-center justify-between flex-shrink-0">
+          {/* Logo in Sidebar */}
+          <div className="flex items-center gap-2 select-none">
+            <span className="text-lg font-black tracking-tighter text-white">
+              PRISM <span className="text-[#2FAE8F]">MOTION</span>
+            </span>
+          </div>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="p-2 hover:bg-gray-200 rounded-full text-gray-500 transition-colors"
+            className="p-2 hover:bg-white/10 rounded-full text-white/50 hover:text-white transition-colors"
           >
             <Menu size={20} />
           </button>
         </div>
 
         {/* Modes */}
-        <div className="px-3 py-2 space-y-1 flex-shrink-0">
+        <div className="px-4 py-2 space-y-2 flex-shrink-0">
           <button
             onClick={() => handleModeSwitch('agent')}
-            className={`w-full text-left px-4 py-4 rounded-lg text-lg font-medium transition-colors flex items-center gap-3 ${selectedMode === 'agent'
-              ? 'bg-emerald-100 text-emerald-900'
-              : 'text-gray-900 hover:bg-gray-100'
+            className={`w-full text-left px-4 py-3 rounded-xl text-base font-medium transition-all flex items-center gap-3 ${selectedMode === 'agent'
+              ? 'bg-[#78D2AA]/10 text-[#CFF5E6] border border-[#78D2AA]/20 shadow-sm'
+              : 'text-white/70 hover:bg-white/5 hover:text-white border border-transparent'
               }`}
           >
             Agent Mode
@@ -763,9 +794,9 @@ const MainApp: React.FC<MainAppProps> = ({ userData, initialMode }) => {
               handleModeSwitch('creator');
               setCreatorAction(null);
             }}
-            className={`w-full text-left px-4 py-4 rounded-lg text-lg font-medium transition-colors flex items-center gap-3 ${selectedMode === 'creator'
-              ? 'bg-emerald-100 text-emerald-900'
-              : 'text-gray-900 hover:bg-gray-100'
+            className={`w-full text-left px-4 py-3 rounded-xl text-base font-medium transition-all flex items-center gap-3 ${selectedMode === 'creator'
+              ? 'bg-[#78D2AA]/10 text-[#CFF5E6] border border-[#78D2AA]/20 shadow-sm'
+              : 'text-white/70 hover:bg-white/5 hover:text-white border border-transparent'
               }`}
           >
             Creator Mode
@@ -773,7 +804,7 @@ const MainApp: React.FC<MainAppProps> = ({ userData, initialMode }) => {
         </div>
 
         {/* Sidebar Content */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 relative no-scrollbar">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 relative custom-scrollbar">
           {/* Agent Mode */}
           <div
             className={`transition-all duration-500 absolute inset-x-4 top-6 ${selectedMode === 'agent'
@@ -781,22 +812,22 @@ const MainApp: React.FC<MainAppProps> = ({ userData, initialMode }) => {
               : 'opacity-0 -translate-x-10 invisible pointer-events-none'
               }`}
           >
-            <button onClick={handleNewChat} className="w-full flex items-center gap-3 px-4 py-3 mb-6 bg-white border border-gray-200 hover:border-emerald-500/50 hover:shadow-sm hover:bg-emerald-50/50 rounded-xl text-lg font-medium text-gray-700 hover:text-emerald-700 transition-all duration-200 group">
-              <div className="p-1.5 bg-gray-100 rounded-lg group-hover:bg-emerald-100 transition-colors">
-                <Plus size={20} className="text-gray-500 group-hover:text-emerald-600" />
+            <button onClick={handleNewChat} className="w-full flex items-center gap-3 px-4 py-3 mb-6 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-xl text-base font-medium text-white/90 transition-all duration-200 group">
+              <div className="p-1.5 bg-white/10 rounded-lg group-hover:bg-[#2FAE8F]/20 transition-colors">
+                <Plus size={18} className="text-white/70 group-hover:text-[#2FAE8F]" />
               </div>
               New Chat
             </button>
-            <div className="text-base font-medium text-gray-800 tracking-wide mb-4 px-2">Recent chats</div>
+            <div className="text-xs font-semibold text-white/40 tracking-wider uppercase mb-3 px-2">Recent chats</div>
             {chatSessions.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-32 text-gray-400 text-sm">
+              <div className="flex flex-col items-center justify-center h-32 text-white/30 text-sm italic">
                 <p>No recent chats</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {chatSessions.map(chat => (
-                  <button key={chat.id} onClick={() => setCurrentSessionId(chat.id)} className={`w-full text-left px-3 py-3 rounded-lg hover:bg-gray-100 transition-colors flex items-center gap-2 group ${currentSessionId === chat.id ? 'bg-gray-100' : ''}`}>
-                    <span className="truncate text-gray-700 group-hover:text-gray-900 flex-1 text-base font-medium">{chat.title}</span>
+                  <button key={chat.id} onClick={() => setCurrentSessionId(chat.id)} className={`w-full text-left px-3 py-2.5 rounded-lg hover:bg-white/5 transition-colors flex items-center gap-2 group ${currentSessionId === chat.id ? 'bg-white/10 text-white' : 'text-white/70'}`}>
+                    <span className="truncate group-hover:text-white flex-1 text-sm font-medium transition-colors">{chat.title}</span>
                   </button>
                 ))}
               </div>
@@ -808,11 +839,11 @@ const MainApp: React.FC<MainAppProps> = ({ userData, initialMode }) => {
             className={`absolute top-6 left-0 w-full px-4 flex flex-col gap-3 transition-all duration-300 ${selectedMode === 'creator' ? 'visible pointer-events-auto' : 'invisible pointer-events-none delay-[600ms]'
               }`}
           >
-            <div className={`text-base font-medium text-gray-800 tracking-wide mb-2 px-1 text-left transition-opacity duration-300 ${selectedMode === 'creator' ? 'opacity-100' : 'opacity-0'}`}>
-              Available modes
+            <div className={`text-xs font-semibold text-white/40 tracking-wider uppercase mb-1 px-1 text-left transition-opacity duration-300 ${selectedMode === 'creator' ? 'opacity-100' : 'opacity-0'}`}>
+              Available workflows
             </div>
             <div className="flex flex-col items-center w-full">
-              <div className="flex flex-col gap-3 w-max">
+              <div className="flex flex-col gap-2 w-full">
                 {QUICK_ACTIONS.map((action, index) => (
                   <button
                     key={action}
@@ -824,7 +855,7 @@ const MainApp: React.FC<MainAppProps> = ({ userData, initialMode }) => {
                       transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
                     }}
                     className={`
-                            w-full px-5 py-3 bg-[#006838] hover:bg-[#00502b] text-white rounded-full font-medium shadow-md text-sm whitespace-nowrap
+                            w-full px-4 py-3 bg-[#E6F4EA] hover:bg-[#D1FAE5] text-[#064E3B] border border-transparent hover:border-[#34D399] rounded-xl font-medium shadow-sm text-sm text-left hover:translate-x-1 transition-all
                             ${selectedMode === 'creator'
                         ? 'opacity-100 translate-x-0 scale-100'
                         : 'opacity-0 translate-x-[150%] scale-90'
@@ -840,12 +871,14 @@ const MainApp: React.FC<MainAppProps> = ({ userData, initialMode }) => {
         </div>
 
         {/* User Info */}
-        <div className="p-4 border-t border-gray-200 flex-shrink-0 bg-white/50">
+        <div className="p-4 border-t border-white/10 flex-shrink-0 bg-[#0E3B2E]/30">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold text-xs shadow-sm">
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#2FAE8F] to-[#0E3B2E] border border-white/10 flex items-center justify-center text-white font-bold text-xs shadow-md">
               {userData.companyName ? userData.companyName.charAt(0).toUpperCase() : 'U'}
             </div>
-            <span className="text-sm font-semibold text-gray-700 truncate">{userData.companyName}</span>
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm font-semibold text-white/90 truncate">{userData.companyName || 'User'}</span>
+            </div>
           </div>
         </div>
       </aside>
@@ -864,9 +897,11 @@ const MainApp: React.FC<MainAppProps> = ({ userData, initialMode }) => {
                 <Menu size={20} />
               </button>
             )}
-            <span className="text-xl font-black tracking-tighter text-black select-none">
-              PRISM <span className="text-emerald-600">MOTION</span>
-            </span>
+            {!sidebarOpen && (
+              <span className="text-xl font-black tracking-tighter text-black select-none transition-opacity duration-300">
+                PRISM <span className="text-emerald-600">MOTION</span>
+              </span>
+            )}
           </div>
           <div className="relative pointer-events-auto">
             {logoUrl ? (
